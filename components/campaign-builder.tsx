@@ -58,6 +58,9 @@ interface LoadedCampaign {
   aiMatchEnabled?: boolean;
   aiMatchThreshold?: number | null;
   aiMatchDescription?: string | null;
+  aiOpeningEnabled?: boolean;
+  aiOpeningTone?: string | null;
+  aiOpeningMaxChars?: number | null;
 }
 
 interface CampaignBuilderProps {
@@ -171,6 +174,51 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [aiMatchEnabled, setAiMatchEnabled] = useState(false);
   const [aiMatchThreshold, setAiMatchThreshold] = useState(0.8);
   const [aiMatchDescription, setAiMatchDescription] = useState("");
+
+  // AI opener (feature 2). The preview calls the same generator the worker
+  // uses, so the sentence shown is what a commenter would actually get.
+  const [aiOpeningEnabled, setAiOpeningEnabled] = useState(false);
+  const [aiOpeningTone, setAiOpeningTone] = useState<"friendly" | "professional">("friendly");
+  const [aiOpeningMaxChars, setAiOpeningMaxChars] = useState(40);
+  const [aiPreviewComment, setAiPreviewComment] = useState("");
+  const [aiPreviewOpening, setAiPreviewOpening] = useState<string | null>(null);
+  const [aiPreviewLoading, setAiPreviewLoading] = useState(false);
+  const [aiPreviewError, setAiPreviewError] = useState<string | null>(null);
+
+  async function runAiPreview() {
+    const comment = aiPreviewComment.trim();
+    if (!comment) return;
+    setAiPreviewLoading(true);
+    setAiPreviewError(null);
+    try {
+      const res = await fetch("/api/ai/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commentText: comment,
+          commenterName: "tester",
+          tone: aiOpeningTone,
+          maxChars: aiOpeningMaxChars,
+          description: aiMatchDescription.trim() || null,
+          dmMessage,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setAiPreviewError(t("Preview failed. Check the server's AI settings and try again."));
+        setAiPreviewOpening(null);
+        return;
+      }
+      setAiPreviewOpening(json.data.opening ?? null);
+      if (!json.data.opening) {
+        setAiPreviewError(t("The AI returned nothing usable; the DM would be sent as written."));
+      }
+    } catch {
+      setAiPreviewError(t("Preview failed. Check the server's AI settings and try again."));
+    } finally {
+      setAiPreviewLoading(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -292,6 +340,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           typeof c.aiMatchThreshold === "number" ? c.aiMatchThreshold : 0.8
         );
         setAiMatchDescription(c.aiMatchDescription ?? "");
+        setAiOpeningEnabled(c.aiOpeningEnabled ?? false);
+        setAiOpeningTone(c.aiOpeningTone === "professional" ? "professional" : "friendly");
+        setAiOpeningMaxChars(
+          typeof c.aiOpeningMaxChars === "number" ? c.aiOpeningMaxChars : 40
+        );
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
           c.publicReplyMessages?.length
@@ -443,6 +496,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       aiMatchEnabled: matchMode === "specific" && aiMatchEnabled,
       aiMatchThreshold,
       aiMatchDescription: aiMatchDescription.trim() || null,
+      aiOpeningEnabled,
+      aiOpeningTone,
+      aiOpeningMaxChars,
       dmMessage,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
@@ -958,6 +1014,86 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
               maxLength={1000}
             />
+            <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">{t("AI-written opener")}</span>
+                <Toggle
+                  on={aiOpeningEnabled && aiConfigured !== false}
+                  onToggle={() => {
+                    if (aiConfigured === false) return;
+                    setAiOpeningEnabled(!aiOpeningEnabled);
+                  }}
+                />
+              </div>
+              {aiConfigured === false ? (
+                <p className="text-xs text-warning">
+                  {t("Set AI_API_KEY on the server to enable AI features.")}
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  {t(
+                    "Adds one sentence that reacts to their comment before your message. Your text, link and buttons are never changed."
+                  )}
+                </p>
+              )}
+              {aiOpeningEnabled && aiConfigured !== false && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={aiOpeningTone}
+                      onChange={(e) =>
+                        setAiOpeningTone(
+                          e.target.value === "professional" ? "professional" : "friendly"
+                        )
+                      }
+                      className="flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-foreground focus:border-accent/40 focus:outline-none"
+                    >
+                      <option value="friendly">{t("Friendly tone")}</option>
+                      <option value="professional">{t("Professional tone")}</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-xs text-muted">
+                      {t("Max characters")}
+                      <input
+                        type="number"
+                        min={10}
+                        max={120}
+                        value={aiOpeningMaxChars}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n)) setAiOpeningMaxChars(Math.min(120, Math.max(10, n)));
+                        }}
+                        className="w-16 rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground focus:border-accent/40 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={aiPreviewComment}
+                      onChange={(e) => setAiPreviewComment(e.target.value)}
+                      placeholder={t("Type a fake comment to preview the opener")}
+                      maxLength={300}
+                      className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={runAiPreview}
+                      disabled={aiPreviewLoading || !aiPreviewComment.trim()}
+                      className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface disabled:opacity-50"
+                    >
+                      {aiPreviewLoading ? t("Generating…") : t("Preview")}
+                    </button>
+                  </div>
+                  {aiPreviewOpening && (
+                    <p className="rounded-lg bg-surface px-3 py-2 text-sm text-foreground">
+                      {aiPreviewOpening}
+                    </p>
+                  )}
+                  {aiPreviewError && (
+                    <p className="text-xs text-warning">{aiPreviewError}</p>
+                  )}
+                </div>
+              )}
+            </div>
             {linkOpen ? (
               <div className="space-y-2">
                 <input
@@ -1081,7 +1217,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             openingDmEnabled={openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
-            revealMessage={dmMessage}
+            revealMessage={
+              aiOpeningEnabled && aiPreviewOpening
+                ? `${aiPreviewOpening}\n\n${dmMessage}`
+                : dmMessage
+            }
             hasLink={Boolean(trackedDestinationUrl.trim())}
             linkButtonLabel={linkButtonLabel || "Open link"}
             linkUrl={trackedDestinationUrl.trim() || undefined}

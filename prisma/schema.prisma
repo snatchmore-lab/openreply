@@ -212,6 +212,13 @@ model Automation {
   // Gives the model something concrete to judge "is this comment asking for
   // it" against, instead of a bare keyword list.
   aiMatchDescription String?
+  // AI-written opener (feature 2): one short sentence reacting to the
+  // commenter's own words, prepended to dmMessage. The link, buttons and the
+  // owner's text are never touched. Off by default.
+  aiOpeningEnabled  Boolean @default(false)
+  // "friendly" | "professional"
+  aiOpeningTone     String  @default("friendly")
+  aiOpeningMaxChars Int     @default(40)
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
 
@@ -247,6 +254,8 @@ model DmLog {
   // false positives and negatives can be reviewed later:
   // { match, confidence, reason, model, cached, threshold }
   aiDecision    Json?
+  // The AI-written opener that was prepended to this DM, if any.
+  aiOpening     String?
   status        DmStatus @default(PENDING)
   attempts      Int      @default(0)
   dmSentAt      DateTime?

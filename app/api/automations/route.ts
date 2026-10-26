@@ -72,6 +72,9 @@ const createAutomationSchema = z
     aiMatchEnabled: z.boolean().optional().default(false),
     aiMatchThreshold: z.number().min(0).max(1).optional().default(0.8),
     aiMatchDescription: z.string().max(300).optional().nullable(),
+    aiOpeningEnabled: z.boolean().optional().default(false),
+    aiOpeningTone: z.enum(["friendly", "professional"]).optional().default("friendly"),
+    aiOpeningMaxChars: z.number().int().min(10).max(120).optional().default(40),
   })
   // A campaign must target a specific post, any post, or the next reel.
   .refine(
@@ -121,6 +124,9 @@ const updateAutomationSchema = z.object({
   aiMatchEnabled: z.boolean().optional(),
   aiMatchThreshold: z.number().min(0).max(1).optional(),
   aiMatchDescription: z.string().max(300).optional().nullable(),
+  aiOpeningEnabled: z.boolean().optional(),
+  aiOpeningTone: z.enum(["friendly", "professional"]).optional(),
+  aiOpeningMaxChars: z.number().int().min(10).max(120).optional(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
@@ -424,6 +430,9 @@ export async function POST(request: NextRequest) {
       aiMatchEnabled: parsed.data.aiMatchEnabled,
       aiMatchThreshold: parsed.data.aiMatchThreshold,
       aiMatchDescription: parsed.data.aiMatchDescription?.trim() || null,
+      aiOpeningEnabled: parsed.data.aiOpeningEnabled,
+      aiOpeningTone: parsed.data.aiOpeningTone,
+      aiOpeningMaxChars: parsed.data.aiOpeningMaxChars,
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),

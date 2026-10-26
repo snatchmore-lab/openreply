@@ -40,6 +40,7 @@ import {
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { aiMatch, type AiMatchDecision } from "@/lib/ai/match";
+import { composeDmWithOpening, generateOpening } from "@/lib/ai/opening";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
@@ -203,20 +204,25 @@ async function sendRevealDirectMessage({
   userId,
   commenterName,
   context,
+  aiOpening = null,
 }: {
   accessToken: InstagramContext;
   automation: RevealAutomation;
   userId: string;
   commenterName: string | null;
   context: string;
+  // An AI-written first sentence to put before the owner's message. Only the
+  // DM-trigger path supplies one; a button tap already had an opening DM.
+  aiOpening?: string | null;
 }): Promise<void> {
+  const dmText = composeDmWithOpening(aiOpening, automation.dmMessage);
   if (automation.trackedLinks.length === 0) {
     await sendDirectMessage({
       context: accessToken,
       instagramAccountId: automation.instagramAccount.instagramId,
       userId: userId,
       message: renderMessageWithTracking({
-        message: automation.dmMessage,
+        message: dmText,
         commenterName,
         trackedLinks: automation.trackedLinks,
       }),
@@ -227,7 +233,7 @@ async function sendRevealDirectMessage({
   // Try button template first; if Meta rejects it, fall back to inline links.
   const bodyText =
     renderMessageWithoutLink({
-      message: automation.dmMessage,
+      message: dmText,
       commenterName,
     }) || "Here's your link:";
   const recipientToken = hashRecipientId(userId);
@@ -260,7 +266,7 @@ async function sendRevealDirectMessage({
         instagramAccountId: automation.instagramAccount.instagramId,
         userId: userId,
         message: buildInlineLinkFallback(
-          automation.dmMessage,
+          dmText,
           commenterName,
           automation.trackedLinks,
           bodyText,
@@ -777,6 +783,16 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
       continue;
     }
+    // AI opener (feature 2): only when the link DM goes out right now. With an
+    // opening DM or a follow prompt first, the reveal arrives later via the
+    // postback path, which deliberately does not add one. Off → dmText is the
+    // owner's message untouched.
+    let aiOpening: string | null = null;
+    if (automation.aiOpeningEnabled && !useOpeningDm && !sendFollowPrompt) {
+      aiOpening = await generateOpening(commentText, commenterName, automation);
+    }
+    const dmText = composeDmWithOpening(aiOpening, automation.dmMessage);
+
     let delivered = false;
     try {
       if (useOpeningDm) {
@@ -816,7 +832,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         // Try button template first; if Meta rejects it, fall back to inline links.
         const bodyText =
           renderMessageWithoutLink({
-            message: automation.dmMessage,
+            message: dmText,
             commenterName,
           }) || "Here's your link:";
         const buttons = buildLinkButtons(
@@ -845,7 +861,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             formatError(buttonError)
           );
           const fallbackMessage = buildInlineLinkFallback(
-            automation.dmMessage,
+            dmText,
             commenterName,
             automation.trackedLinks,
             bodyText,
@@ -865,7 +881,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         }
       } else {
         const dmMessage = renderMessageWithTracking({
-          message: automation.dmMessage,
+          message: dmText,
           commenterName,
           trackedLinks: automation.trackedLinks,
           recipientToken: hashRecipientId(commenterId),
@@ -892,6 +908,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           dmSentAt: new Date(),
           dmDeliveryUnconfirmed: false,
           errorMessage: null,
+          aiOpening,
         },
       });
     } catch (error) {
@@ -1579,6 +1596,13 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       continue;
     }
 
+    // AI opener for the DM-trigger path; same rule as comments: only when the
+    // link goes out now, never ahead of a follow prompt.
+    let aiOpening: string | null = null;
+    if (automation.aiOpeningEnabled && !sendFollowPrompt) {
+      aiOpening = await generateOpening(messageText, commenterName, automation);
+    }
+
     try {
       if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
@@ -1602,6 +1626,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           userId: senderId,
           commenterName: commenterName,
           context: "message trigger",
+          aiOpening,
         });
 
         // The link has been delivered, so the appreciation follow-up applies
@@ -1637,11 +1662,13 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           commenterName,
           status: "SENT",
           dmSentAt: new Date(),
+          aiOpening,
         },
         update: {
           status: "SENT",
           dmSentAt: new Date(),
           errorMessage: null,
+          aiOpening,
         },
       });
     } catch (error) {
