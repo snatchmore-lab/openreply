@@ -359,6 +359,8 @@
   "Loose (0.7)": "寬鬆（0.7）",
   "AI: no match": "AI 判定不符",
   "AI FAQ bot": "AI 問答機器人",
+  "AI rewording": "AI 微調字句",
+  "After a reply is picked, AI rewords it slightly so no two replies under a post read the same. Meaning, links and the username placeholder stay unchanged.": "挑出一句後再由 AI 微調字句，讓同一篇貼文底下的回覆不會一模一樣。意思、連結和「用戶名稱」佔位符都不會變。",
   "Answers follow-up DMs from the knowledge base below. Anything it cannot answer gets your handoff message and the conversation is flagged for you.": "用下面的知識庫回答後續私訊。答不了的會送出你的交接訊息，並把那段對話標記給你。",
   "Enable FAQ bot": "啟用問答機器人",
   "Knowledge base (plain text)": "知識庫（純文字）",

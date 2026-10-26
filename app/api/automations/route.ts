@@ -75,6 +75,7 @@ const createAutomationSchema = z
     aiOpeningEnabled: z.boolean().optional().default(false),
     aiOpeningTone: z.enum(["friendly", "professional"]).optional().default("friendly"),
     aiOpeningMaxChars: z.number().int().min(10).max(120).optional().default(40),
+    aiPublicReplyVary: z.boolean().optional().default(false),
   })
   // A campaign must target a specific post, any post, or the next reel.
   .refine(
@@ -127,6 +128,7 @@ const updateAutomationSchema = z.object({
   aiOpeningEnabled: z.boolean().optional(),
   aiOpeningTone: z.enum(["friendly", "professional"]).optional(),
   aiOpeningMaxChars: z.number().int().min(10).max(120).optional(),
+  aiPublicReplyVary: z.boolean().optional(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
@@ -433,6 +435,7 @@ export async function POST(request: NextRequest) {
       aiOpeningEnabled: parsed.data.aiOpeningEnabled,
       aiOpeningTone: parsed.data.aiOpeningTone,
       aiOpeningMaxChars: parsed.data.aiOpeningMaxChars,
+      aiPublicReplyVary: parsed.data.publicReplyEnabled && parsed.data.aiPublicReplyVary,
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),

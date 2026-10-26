@@ -61,6 +61,7 @@ interface LoadedCampaign {
   aiOpeningEnabled?: boolean;
   aiOpeningTone?: string | null;
   aiOpeningMaxChars?: number | null;
+  aiPublicReplyVary?: boolean;
 }
 
 interface CampaignBuilderProps {
@@ -177,6 +178,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   // AI opener (feature 2). The preview calls the same generator the worker
   // uses, so the sentence shown is what a commenter would actually get.
+  const [aiPublicReplyVary, setAiPublicReplyVary] = useState(false);
   const [aiOpeningEnabled, setAiOpeningEnabled] = useState(false);
   const [aiOpeningTone, setAiOpeningTone] = useState<"friendly" | "professional">("friendly");
   const [aiOpeningMaxChars, setAiOpeningMaxChars] = useState(40);
@@ -340,6 +342,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           typeof c.aiMatchThreshold === "number" ? c.aiMatchThreshold : 0.8
         );
         setAiMatchDescription(c.aiMatchDescription ?? "");
+        setAiPublicReplyVary(c.aiPublicReplyVary ?? false);
         setAiOpeningEnabled(c.aiOpeningEnabled ?? false);
         setAiOpeningTone(c.aiOpeningTone === "professional" ? "professional" : "friendly");
         setAiOpeningMaxChars(
@@ -499,6 +502,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       aiOpeningEnabled,
       aiOpeningTone,
       aiOpeningMaxChars,
+      aiPublicReplyVary: publicReplyEnabled && aiPublicReplyVary,
       dmMessage,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
@@ -935,6 +939,25 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               <p className="text-xs text-muted">
                 {t("One is picked at random each time, so replies don't look identical.")}
               </p>
+              <div className="space-y-1 rounded-lg border border-border px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-foreground">{t("AI rewording")}</span>
+                  <Toggle
+                    on={aiPublicReplyVary && aiConfigured !== false}
+                    onToggle={() => {
+                      if (aiConfigured === false) return;
+                      setAiPublicReplyVary(!aiPublicReplyVary);
+                    }}
+                  />
+                </div>
+                <p className={`text-xs ${aiConfigured === false ? "text-warning" : "text-muted"}`}>
+                  {aiConfigured === false
+                    ? t("Set AI_API_KEY on the server to enable AI features.")
+                    : t(
+                        "After a reply is picked, AI rewords it slightly so no two replies under a post read the same. Meaning, links and the username placeholder stay unchanged."
+                      )}
+                </p>
+              </div>
             </div>
           )}
         </Section>

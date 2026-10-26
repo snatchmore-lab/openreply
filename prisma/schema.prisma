@@ -222,6 +222,11 @@ model Automation {
   // "friendly" | "professional"
   aiOpeningTone     String  @default("friendly")
   aiOpeningMaxChars Int     @default(40)
+  // Feature 4: after a public reply template is picked at random, let the
+  // model reword it slightly so repeated replies under one post never read
+  // identical. Meaning, language, {username}/{link} tokens and any URL are
+  // kept; on any failure the template is posted as written.
+  aiPublicReplyVary Boolean @default(false)
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
 

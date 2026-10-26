@@ -359,6 +359,8 @@
   "Loose (0.7)": "Flexível (0,7)",
   "AI: no match": "IA: sem correspondência",
   "AI FAQ bot": "Bot de FAQ com IA",
+  "AI rewording": "Reescrita por IA",
+  "After a reply is picked, AI rewords it slightly so no two replies under a post read the same. Meaning, links and the username placeholder stay unchanged.": "Depois de escolher uma resposta, a IA a reescreve levemente para que duas respostas no mesmo post nunca fiquem iguais. Significado, links e o marcador de nome de usuário não mudam.",
   "Answers follow-up DMs from the knowledge base below. Anything it cannot answer gets your handoff message and the conversation is flagged for you.": "Responde DMs de acompanhamento usando a base de conhecimento abaixo. O que não souber responder recebe sua mensagem de transferência e a conversa é sinalizada para você.",
   "Enable FAQ bot": "Ativar bot de FAQ",
   "Knowledge base (plain text)": "Base de conhecimento (texto simples)",

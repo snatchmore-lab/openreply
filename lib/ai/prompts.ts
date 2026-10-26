@@ -121,6 +121,35 @@ export function buildFaqUserPrompt(input: FaqPromptInput): string {
   return lines.join("\n");
 }
 
+// ─── Feature 4: public reply variation ──────────────────────────────────────
+
+export interface VaryPromptInput {
+  template: string;
+  commentText: string;
+}
+
+export const VARY_SYSTEM_PROMPT = `You lightly reword a creator's public comment reply on Instagram so that many replies under the same post do not read identical.
+
+Rules:
+- Keep the exact meaning, intent and tone of the template. Same language as the template.
+- Change wording, word order or punctuation a little; it must still be clearly the same message. Do not add new information, offers, prices or promises.
+- Keep every placeholder token such as {username} and {link} exactly as written, and keep any URL or @mention exactly as written. Do not add new ones.
+- Keep roughly the same length and the same number of emoji (you may swap an emoji for a similar one).
+- You may glance at the commenter's text to pick a natural phrasing, but do not answer it or quote it.
+- Plain text only, one message.
+
+Respond only with the JSON object.`;
+
+export function buildVaryUserPrompt(input: VaryPromptInput): string {
+  return [
+    "Template:",
+    input.template,
+    "",
+    "Commenter's text (for phrasing only):",
+    input.commentText.slice(0, 300),
+  ].join("\n");
+}
+
 export function buildMatchUserPrompt(input: MatchPromptInput): string {
   const lines: string[] = [];
   lines.push(`Channel: ${input.channel === "dm" ? "direct message" : "post comment"}`);

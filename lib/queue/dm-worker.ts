@@ -42,6 +42,7 @@ import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { aiMatch, type AiMatchDecision } from "@/lib/ai/match";
 import { composeDmWithOpening, generateOpening } from "@/lib/ai/opening";
 import { handleFaqMessage } from "@/lib/ai/faq";
+import { varyPublicReply } from "@/lib/ai/vary";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
@@ -582,7 +583,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       await claimCommentDelivery(automation.id, commentId, "public")
     ) {
       try {
-        const chosen = replyPool[Math.floor(Math.random() * replyPool.length)];
+        const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
+        // Feature 4: optional AI rewording of the picked template. Null (AI
+        // off, cap, provider error, rewrite rejected) posts the template.
+        const chosen = automation.aiPublicReplyVary
+          ? (await varyPublicReply(picked, commentText, automation, commentId)) ?? picked
+          : picked;
         const publicReply = renderMessageWithTracking({
           message: chosen,
           commenterName,
