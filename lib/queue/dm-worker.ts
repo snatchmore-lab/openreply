@@ -39,6 +39,8 @@ import {
   type InstagramContext,
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { aiMatch, type AiMatchDecision } from "@/lib/ai/match";
+import type { Prisma } from "@/app/generated/prisma/client";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
@@ -272,6 +274,88 @@ async function sendRevealDirectMessage({
 }
 
 
+type MatchSource = "EXACT" | "AI";
+
+function toJson(value: AiMatchDecision | null): Prisma.InputJsonValue | undefined {
+  return value ? (value as unknown as Prisma.InputJsonValue) : undefined;
+}
+
+/**
+ * Ask the AI matcher about one comment or DM for one campaign.
+ *
+ * Returns the decision when it counts as a hit, or null when the campaign
+ * should be skipped. A "no" is written to DmLog as SKIPPED_AI_NO_MATCH with the
+ * full verdict so the owner can audit false negatives; the row also stops a
+ * retry or the polling reconciler from paying for the same judgement twice.
+ * A skipped call (AI off, daily cap, provider error) is logged to the console
+ * only — no DmLog row, so a later retry can still try the AI.
+ */
+async function judgeWithAi({
+  automation,
+  text,
+  channel,
+  logKey,
+  logCreate,
+}: {
+  automation: {
+    id: string;
+    workspaceId: string;
+    keywords: string[];
+    aiMatchThreshold: number;
+    aiMatchDescription: string | null;
+  };
+  text: string;
+  channel: "comment" | "dm";
+  logKey: { automationId: string; commentId: string };
+  logCreate: {
+    workspaceId: string;
+    automationId: string;
+    instagramAccountId: string;
+    commenterId: string;
+    commenterName?: string | null;
+    commentText: string;
+    commentId: string;
+  };
+}): Promise<AiMatchDecision | null> {
+  const prior = await prisma.dmLog.findUnique({
+    where: { automationId_commentId: logKey },
+    select: { status: true },
+  });
+  if (prior?.status === "SKIPPED_AI_NO_MATCH") return null;
+
+  const outcome = await aiMatch(text, automation, channel);
+
+  if (outcome.kind === "skipped") {
+    if (outcome.reason !== "disabled") {
+      console.warn(
+        `[DM Worker] AI match skipped for campaign ${automation.id}: ${outcome.reason}${
+          outcome.detail ? ` (${outcome.detail})` : ""
+        }`
+      );
+    }
+    return null;
+  }
+
+  if (outcome.decision.matched) return outcome.decision;
+
+  await prisma.dmLog
+    .upsert({
+      where: { automationId_commentId: logKey },
+      create: {
+        ...logCreate,
+        matchSource: "AI",
+        aiDecision: toJson(outcome.decision),
+        status: "SKIPPED_AI_NO_MATCH",
+      },
+      update: {
+        aiDecision: toJson(outcome.decision),
+        status: "SKIPPED_AI_NO_MATCH",
+      },
+    })
+    .catch(() => {});
+  return null;
+}
+
 function connectionScope(data: DmQueueJob) {
   return data.accountConnectionId ? { instagramAccountId: data.accountConnectionId } : {};
 }
@@ -322,13 +406,40 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
   for (const automation of automations) {
     // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
-    const matchResult = automation.matchAnyWord
+    let matchResult = automation.matchAnyWord
       ? { matched: true, matchedKeyword: null }
       : matchKeywords(
           commentText,
           automation.keywords,
           automation.wholeWordMatch
         );
+    let matchSource: MatchSource | null = matchResult.matched ? "EXACT" : null;
+    let aiDecision: AiMatchDecision | null = null;
+
+    // AI matching is a second opinion only: it runs after the exact matcher
+    // said no, and only when the campaign opted in. With the switch off this
+    // block never executes and the campaign behaves like stock OpenReply.
+    if (!matchResult.matched && automation.aiMatchEnabled && !automation.matchAnyWord) {
+      const verdict = await judgeWithAi({
+        automation,
+        text: commentText,
+        channel: "comment",
+        logKey: { automationId: automation.id, commentId },
+        logCreate: {
+          workspaceId: automation.workspaceId,
+          automationId: automation.id,
+          instagramAccountId: automation.instagramAccountId,
+          commenterId,
+          commenterName,
+          commentText,
+          commentId,
+        },
+      });
+      if (!verdict) continue;
+      aiDecision = verdict;
+      matchResult = { matched: true, matchedKeyword: null };
+      matchSource = "AI";
+    }
 
     if (!matchResult.matched) {
       continue;
@@ -437,9 +548,14 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         instagramAccountId: automation.instagramAccountId,
         commenterId, commenterName, commentText, commentId,
         matchedKeyword: matchResult.matchedKeyword,
+        matchSource,
+        aiDecision: toJson(aiDecision),
         status: "PENDING",
       },
-      update: {},
+      update: {
+        ...(matchSource ? { matchSource } : {}),
+        ...(aiDecision ? { aiDecision: toJson(aiDecision) } : {}),
+      },
     });
 
     // Public reply leg — decoupled from the DM and posted first so a DM failure
@@ -1300,13 +1416,38 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   const dedupeId = `dm:${messageId}`;
 
   for (const automation of automations) {
-    const matchResult = automation.matchAnyWord
+    let matchResult = automation.matchAnyWord
       ? { matched: true, matchedKeyword: null }
       : matchKeywords(
           messageText,
           automation.keywords,
           automation.wholeWordMatch
         );
+    let matchSource: MatchSource | null = matchResult.matched ? "EXACT" : null;
+    let aiDecision: AiMatchDecision | null = null;
+
+    // Same second-opinion rule as processComment: exact first, AI only on a
+    // miss, only when the campaign opted in.
+    if (!matchResult.matched && automation.aiMatchEnabled && !automation.matchAnyWord) {
+      const verdict = await judgeWithAi({
+        automation,
+        text: messageText,
+        channel: "dm",
+        logKey: { automationId: automation.id, commentId: dedupeId },
+        logCreate: {
+          workspaceId: automation.workspaceId,
+          automationId: automation.id,
+          instagramAccountId: automation.instagramAccountId,
+          commenterId: senderId,
+          commentText: messageText,
+          commentId: dedupeId,
+        },
+      });
+      if (!verdict) continue;
+      aiDecision = verdict;
+      matchResult = { matched: true, matchedKeyword: null };
+      matchSource = "AI";
+    }
 
     if (!matchResult.matched) continue;
 
@@ -1337,6 +1478,8 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       commentText: messageText,
       commentId: dedupeId,
       matchedKeyword: matchResult.matchedKeyword,
+      matchSource,
+      aiDecision: toJson(aiDecision),
     };
 
     if (!hasInstagramCredentials(automation.instagramAccount)) {

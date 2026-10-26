@@ -55,6 +55,9 @@ interface LoadedCampaign {
   isActive: boolean;
   instagramAccountId: string;
   trackedLinks?: { destinationUrl: string; label?: string | null }[];
+  aiMatchEnabled?: boolean;
+  aiMatchThreshold?: number | null;
+  aiMatchDescription?: string | null;
 }
 
 interface CampaignBuilderProps {
@@ -161,6 +164,29 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [keywordText, setKeywordText] = useState("");
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
 
+  // AI smart matching. `aiConfigured` is null until /api/ai/status answers;
+  // false greys the switch out with a hint instead of letting the owner turn
+  // on something the server cannot run.
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+  const [aiMatchEnabled, setAiMatchEnabled] = useState(false);
+  const [aiMatchThreshold, setAiMatchThreshold] = useState(0.8);
+  const [aiMatchDescription, setAiMatchDescription] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ai/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled) setAiConfigured(Boolean(json?.data?.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setAiConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
   const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
 
@@ -261,6 +287,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
+        setAiMatchEnabled(c.aiMatchEnabled ?? false);
+        setAiMatchThreshold(
+          typeof c.aiMatchThreshold === "number" ? c.aiMatchThreshold : 0.8
+        );
+        setAiMatchDescription(c.aiMatchDescription ?? "");
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
           c.publicReplyMessages?.length
@@ -409,6 +440,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmTriggerEnabled,
+      aiMatchEnabled: matchMode === "specific" && aiMatchEnabled,
+      aiMatchThreshold,
+      aiMatchDescription: aiMatchDescription.trim() || null,
       dmMessage,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
@@ -715,6 +749,57 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
               />
               <p className="text-xs text-muted">{t("Use commas to separate words")}</p>
+            </div>
+          )}
+          {matchMode === "specific" && (
+            <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">{t("AI smart matching")}</span>
+                <Toggle
+                  on={aiMatchEnabled && aiConfigured !== false}
+                  onToggle={() => {
+                    if (aiConfigured === false) return;
+                    setAiMatchEnabled(!aiMatchEnabled);
+                  }}
+                />
+              </div>
+              {aiConfigured === false ? (
+                <p className="text-xs text-warning">
+                  {t("Set AI_API_KEY on the server to enable AI features.")}
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  {t(
+                    "When the exact keywords miss, let AI decide whether the comment is asking for this campaign."
+                  )}
+                </p>
+              )}
+              {aiMatchEnabled && aiConfigured !== false && (
+                <div className="space-y-2">
+                  <input
+                    value={aiMatchDescription}
+                    onChange={(e) => setAiMatchDescription(e.target.value)}
+                    placeholder={t("e.g. 7-day sleep diary PDF")}
+                    maxLength={300}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                  />
+                  <p className="text-xs text-muted">
+                    {t("What this campaign gives out (helps the AI judge)")}
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted">{t("Minimum confidence")}</span>
+                    <select
+                      value={String(aiMatchThreshold)}
+                      onChange={(e) => setAiMatchThreshold(Number(e.target.value))}
+                      className="rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground focus:border-accent/40 focus:outline-none"
+                    >
+                      <option value="0.9">{t("Strict (0.9)")}</option>
+                      <option value="0.8">{t("Default (0.8)")}</option>
+                      <option value="0.7">{t("Loose (0.7)")}</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <Radio

@@ -38,6 +38,7 @@ const STATUS_FILTERS = [
   "SKIPPED_RATE_LIMIT",
   "SKIPPED_PLAN_LIMIT",
   "SKIPPED_DEDUP",
+  "SKIPPED_AI_NO_MATCH",
 ];
 
 export default function LogsPage() {

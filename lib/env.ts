@@ -51,6 +51,19 @@ export function getMetaGraphApiVersion(): string {
 }
 
 /**
+ * AI features (smart matching, personalised openers, FAQ bot). All optional:
+ * without AI_API_KEY every AI switch in the dashboard is inert and the app
+ * behaves exactly like stock OpenReply. See lib/ai/service.ts.
+ */
+export function getAiEnv() {
+  return {
+    apiKey: process.env.AI_API_KEY?.trim() || null,
+    model: process.env.AI_MODEL?.trim() || "claude-haiku-5-5",
+    dailyCallLimit: Number(process.env.AI_DAILY_CALL_LIMIT) || 2000,
+  };
+}
+
+/**
  * The public demo, and the only host where sign-in is blocked. This repo is
  * something other people clone and deploy; a self-hoster's own domain must
  * never match this and must never be blocked from logging in — that's the

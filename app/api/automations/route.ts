@@ -69,6 +69,9 @@ const createAutomationSchema = z
     secondaryButtonLabel: z.string().max(20).optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
+    aiMatchEnabled: z.boolean().optional().default(false),
+    aiMatchThreshold: z.number().min(0).max(1).optional().default(0.8),
+    aiMatchDescription: z.string().max(300).optional().nullable(),
   })
   // A campaign must target a specific post, any post, or the next reel.
   .refine(
@@ -115,6 +118,9 @@ const updateAutomationSchema = z.object({
   publicReplyMessages: z.array(z.string().max(1000)).max(10).optional(),
   isActive: z.boolean().optional(),
   wholeWordMatch: z.boolean().optional(),
+  aiMatchEnabled: z.boolean().optional(),
+  aiMatchThreshold: z.number().min(0).max(1).optional(),
+  aiMatchDescription: z.string().max(300).optional().nullable(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
@@ -415,6 +421,9 @@ export async function POST(request: NextRequest) {
         : null,
       isActive: parsed.data.isActive,
       wholeWordMatch: parsed.data.wholeWordMatch,
+      aiMatchEnabled: parsed.data.aiMatchEnabled,
+      aiMatchThreshold: parsed.data.aiMatchThreshold,
+      aiMatchDescription: parsed.data.aiMatchDescription?.trim() || null,
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),

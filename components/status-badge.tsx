@@ -14,6 +14,7 @@ const statusConfig: Record<string, { text: string; label: StaticMessageKey }> = 
   SKIPPED_RATE_LIMIT: { text: "text-warning", label: "Rate limited" },
   SKIPPED_PLAN_LIMIT: { text: "text-warning", label: "Skipped" },
   SKIPPED_NO_MATCH: { text: "text-muted", label: "No match" },
+  SKIPPED_AI_NO_MATCH: { text: "text-muted", label: "AI: no match" },
 };
 
 interface StatusBadgeProps {

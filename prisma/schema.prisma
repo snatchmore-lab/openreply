@@ -203,6 +203,15 @@ model Automation {
   publicReplyMessages String[] @default([])
   isActive       Boolean @default(true)
   wholeWordMatch Boolean @default(true)
+  // AI keyword matching. Only consulted when the exact matcher above did NOT
+  // hit, so with it off the campaign behaves exactly as before. The threshold
+  // is the minimum model confidence (0-1) for an AI hit to count.
+  aiMatchEnabled     Boolean @default(false)
+  aiMatchThreshold   Float   @default(0.8)
+  // What the campaign hands out, in the owner's words ("7 天睡眠日記 PDF").
+  // Gives the model something concrete to judge "is this comment asking for
+  // it" against, instead of a bare keyword list.
+  aiMatchDescription String?
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
 
@@ -231,6 +240,13 @@ model DmLog {
   commentText   String
   commentId     String
   matchedKeyword String?
+  // "EXACT" when the keyword matcher hit, "AI" when only the AI matcher did.
+  // Null on rows written before AI matching existed.
+  matchSource   String?
+  // The AI matcher's verdict for this comment, kept even when it said no, so
+  // false positives and negatives can be reviewed later:
+  // { match, confidence, reason, model, cached, threshold }
+  aiDecision    Json?
   status        DmStatus @default(PENDING)
   attempts      Int      @default(0)
   dmSentAt      DateTime?
@@ -376,6 +392,8 @@ enum DmStatus {
   SKIPPED_RATE_LIMIT
   SKIPPED_PLAN_LIMIT
   SKIPPED_NO_MATCH
+  // Exact match missed and the AI matcher said no (or was under threshold).
+  SKIPPED_AI_NO_MATCH
 }
 
 enum WebhookStatus {
@@ -418,4 +436,34 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+// ─── AI ─────────────────────────────────────────────────────────────────────
+
+/// One row per workspace, per UTC day, per AI feature. The daily call cap in
+/// lib/ai/service.ts reads `calls`; token counts are for cost reporting.
+model AiUsage {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  /// Midnight UTC of the day the calls belong to.
+  date         DateTime @db.Date
+  feature      String
+  calls        Int      @default(0)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([workspaceId, date, feature])
+  @@index([workspaceId, date])
+}
+
+/// Memoised model results. `key` is a hash of feature + inputs, so the same
+/// comment against the same campaign never costs a second call.
+model AiCache {
+  key       String   @id
+  feature   String
+  result    Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
