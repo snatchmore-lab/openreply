@@ -239,7 +239,7 @@
   "Post": "Publicação",
   "Posts": "Publicações",
   "Powered by OpenReply": "Desenvolvido com OpenReply",
-  "Preview": "Prévia",
+  "Preview": "Pré-visualizar",
   "Previous": "Anterior",
   "Private replies successfully sent.": "Respostas privadas enviadas com sucesso.",
   "Production Diagnostics": "Diagnóstico de produção",
@@ -419,7 +419,6 @@
   "Max characters": "Máx. de caracteres",
   "Type a fake comment to preview the opener": "Digite um comentário fictício para ver a abertura",
   "Generating…": "Gerando…",
-  "Preview": "Pré-visualizar",
   "Preview failed. Check the server's AI settings and try again.": "A pré-visualização falhou. Verifique as configurações de IA do servidor e tente de novo.",
   "The AI returned nothing usable; the DM would be sent as written.": "A IA não gerou nada utilizável; a DM seria enviada como está.",
   "Use in OpenReply": "Usar no OpenReply",
@@ -520,5 +519,12 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "Insert emoji": "Inserir emoji",
+  "While we check the follow (optional)": "Enquanto verificamos o follow (opcional)",
+  "Checking your follow, one moment 🔍": "Verificando seu follow, só um momento 🔍",
+  "Instagram can take up to a minute to show a new follow. This line is sent right after the tap so the chat isn't silent. Leave empty to send nothing.": "O Instagram pode levar até um minuto para mostrar um novo follow. Esta frase é enviada logo após o toque para o chat não ficar em silêncio. Deixe vazio para não enviar nada.",
+  "If they still don't follow (optional)": "Se ainda não seguir (opcional)",
+  "Not following yet. Follow, then tap the button again 😊": "Ainda não vi seu follow. Siga e toque no botão de novo 😊",
+  "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "Enviada com o mesmo botão quando o follow ainda não aparece. Deixe vazio para reenviar a mensagem acima."
 }

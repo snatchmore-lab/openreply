@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { completeJson } from "./service";
 import { buildVaryUserPrompt, VARY_SYSTEM_PROMPT } from "./prompts";
-import { stripFullStops } from "./text";
+import { displayWidth, MAX_LINE_WIDTH } from "./text";
 
 const VaryOutput = z.object({ reply: z.string().max(1200) });
 
@@ -28,13 +28,37 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 /**
- * Accept the rewrite only if it is non-empty, single-message, within 1.6x of
- * the template's length, and carries exactly the template's tokens, URLs and
+ * Accept the rewrite only if it is non-empty, keeps the template's lines,
+ * stays within 1.6x of the template's length, and carries exactly the template's tokens, URLs and
  * mentions. Exposed for tests.
  */
 export function acceptVariation(template: string, candidate: string): string | null {
-  const text = stripFullStops(candidate).replace(/\s+/g, " ").trim();
-  if (!text) return null;
+  // The owner's line breaks are the format: the rewrite keeps the same number
+  // of lines, and no line grows past the template's line (or the house limit).
+  const templateLines = template.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = candidate
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/。+(?=\s*$)/g, "")
+        .replace(/。+(\s*[」』”"）)])/g, "$1")
+        .replace(/。+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    )
+    .filter(Boolean);
+  if (lines.length === 0 || lines.length !== templateLines.length) return null;
+  for (let i = 0; i < lines.length; i += 1) {
+    // A line the owner kept short stays short; a longer line is the owner's
+    // choice and only the overall length limit below applies.
+    if (
+      displayWidth(templateLines[i]) <= MAX_LINE_WIDTH &&
+      displayWidth(lines[i]) > MAX_LINE_WIDTH
+    ) {
+      return null;
+    }
+  }
+  const text = lines.join("\n");
   if ([...text].length > Math.max(20, Math.ceil([...template].length * 1.6))) return null;
   if (!sameSet(sortedMatches(template, TOKEN_PATTERN), sortedMatches(text, TOKEN_PATTERN))) {
     return null;

@@ -1667,6 +1667,44 @@ describe("DM Worker — follow re-check acknowledgement", () => {
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
     expect(mockRedisSet).not.toHaveBeenCalled();
   });
+
+  it("uses the campaign's own checking message over the server default", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...gated,
+      followCheckingMessage: "幫你確認追蹤中\n稍等一下下 🔍",
+    });
+
+    await getProcessor()(createMockPostbackJob(tap));
+
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "幫你確認追蹤中\n稍等一下下 🔍"
+    );
+  });
+
+  it("answers a final 'not following' with the campaign's not-yet line and the same button", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...gated,
+      followPromptMessage: "先追蹤再按按鈕",
+      followPromptButtonLabel: "我追蹤好了",
+      followNotYetMessage: "還沒收到你的追蹤唷\n追蹤完再按一次 😊",
+    });
+
+    await getProcessor()(
+      createMockPostbackJob({ ...tap, followRecheck: true, followRecheckAttempt: 2 })
+    );
+
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "還沒收到你的追蹤唷\n追蹤完再按一次 😊",
+      "我追蹤好了",
+      "followcheck:auto_789"
+    );
+  });
 });
 
 describe("ambiguous Meta sends and durable comment claims", () => {

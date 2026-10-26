@@ -20,7 +20,7 @@ import {
   sendDirectMessage,
 } from "@/lib/instagram/provider";
 import { completeJson } from "./service";
-import { stripFullStops } from "./text";
+import { capByLines, formatAiText } from "./text";
 import { normalizeTone } from "./opening";
 import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
 import { isValidEmail, sendThrottledNotifyEmail } from "@/lib/notify/email";
@@ -102,10 +102,9 @@ export type FaqOutcome =
 
 /** Same clean-up as the opener, minus the URL strip: KB URLs are allowed. */
 export function sanitizeAnswer(raw: string, maxChars: number): string | null {
-  let text = stripFullStops(raw).replace(/\{[a-z_]+\}/gi, "").replace(/\s+/g, " ").trim();
+  let text = raw.replace(/\{[a-z_]+\}/gi, "").trim();
   text = text.replace(/^["「『“]+/, "").replace(/["」』”]+$/, "").trim();
-  if (!text) return null;
-  if ([...text].length > maxChars) text = [...text].slice(0, maxChars).join("").trimEnd();
+  text = capByLines(formatAiText(text), maxChars);
   return text || null;
 }
 

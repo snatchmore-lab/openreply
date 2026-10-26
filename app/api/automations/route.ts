@@ -44,6 +44,8 @@ const createAutomationSchema = z
     requireFollow: z.boolean().optional().default(false),
     followPromptMessage: z.string().max(1000).optional().nullable(),
     followPromptButtonLabel: z.string().max(20).optional().nullable(),
+    followCheckingMessage: z.string().max(1000).optional().nullable(),
+    followNotYetMessage: z.string().max(1000).optional().nullable(),
     followUpEnabled: z.boolean().optional().default(false),
     followUpMessage: z.string().max(1000).optional().nullable(),
     // Minutes to wait before the follow-up. Capped at 24h so it stays inside
@@ -114,6 +116,8 @@ const updateAutomationSchema = z.object({
   requireFollow: z.boolean().optional(),
   followPromptMessage: z.string().max(1000).optional().nullable(),
   followPromptButtonLabel: z.string().max(20).optional().nullable(),
+  followCheckingMessage: z.string().max(1000).optional().nullable(),
+  followNotYetMessage: z.string().max(1000).optional().nullable(),
   followUpEnabled: z.boolean().optional(),
   followUpMessage: z.string().max(1000).optional().nullable(),
   followUpDelayMinutes: z.number().int().min(0).max(1440).optional(),
@@ -413,6 +417,12 @@ export async function POST(request: NextRequest) {
       followPromptButtonLabel: parsed.data.requireFollow
         ? parsed.data.followPromptButtonLabel || null
         : null,
+      followCheckingMessage: parsed.data.requireFollow
+        ? parsed.data.followCheckingMessage?.trim() || null
+        : null,
+      followNotYetMessage: parsed.data.requireFollow
+        ? parsed.data.followNotYetMessage?.trim() || null
+        : null,
       followUpEnabled: parsed.data.followUpEnabled,
       followUpMessage: parsed.data.followUpEnabled
         ? parsed.data.followUpMessage || null
@@ -522,6 +532,14 @@ export async function PATCH(request: NextRequest) {
   if (automationData.requireFollow === false) {
     automationData.followPromptMessage = null;
     automationData.followPromptButtonLabel = null;
+    automationData.followCheckingMessage = null;
+    automationData.followNotYetMessage = null;
+  }
+  if (automationData.followCheckingMessage !== undefined) {
+    automationData.followCheckingMessage = automationData.followCheckingMessage?.trim() || null;
+  }
+  if (automationData.followNotYetMessage !== undefined) {
+    automationData.followNotYetMessage = automationData.followNotYetMessage?.trim() || null;
   }
   if (automationData.followUpEnabled === false) {
     automationData.followUpMessage = null;

@@ -197,6 +197,10 @@ model Automation {
   requireFollow           Boolean @default(false)
   followPromptMessage     String?
   followPromptButtonLabel String?
+  /// Sent right after an "I'm following" tap while Instagram catches up. Null = silent.
+  followCheckingMessage   String?
+  /// Sent when the tap is rejected after the re-checks. Null = resend the follow prompt.
+  followNotYetMessage     String?
   followUpEnabled Boolean @default(false)
   followUpMessage String?
   // Minutes to wait after the link is delivered before sending the follow-up.

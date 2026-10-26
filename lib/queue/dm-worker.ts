@@ -982,14 +982,18 @@ async function sendFollowRecheckAck({
   automationId,
   userId,
   operationId,
+  campaignMessage,
 }: {
   context: InstagramContext;
   instagramAccountId: string;
   automationId: string;
   userId: string;
   operationId: string | null;
+  /** The campaign's own "checking your follow" text; wins over the env default. */
+  campaignMessage?: string | null;
 }): Promise<void> {
-  const message = process.env.FOLLOW_RECHECK_ACK_MESSAGE?.trim();
+  const message =
+    campaignMessage?.trim() || process.env.FOLLOW_RECHECK_ACK_MESSAGE?.trim();
   if (!message) return;
   try {
     // One acknowledgement per re-check cycle: a burst of taps collapses into a
@@ -1163,6 +1167,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
               automationId: automation.id,
               userId,
               operationId,
+              campaignMessage: automation.followCheckingMessage,
             });
           }
           return;
@@ -1190,8 +1195,15 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           .catch(() => {});
       }
 
+      // After the re-checks still say "not following", a campaign can answer
+      // with its own short "not yet" line instead of repeating the full prompt.
+      const notYet =
+        !fromOpeningDm && automation.followNotYetMessage?.trim()
+          ? automation.followNotYetMessage
+          : null;
       const promptText = renderMessageWithoutLink({
         message:
+          notYet ||
           automation.followPromptMessage ||
           "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
         commenterName,

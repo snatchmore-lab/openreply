@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { completeJson } from "./service";
-import { stripFullStops } from "./text";
+import { capByLines, formatAiText } from "./text";
 import {
   buildOpeningUserPrompt,
   OPENING_SYSTEM_PROMPT,
@@ -48,22 +48,18 @@ const URL_PATTERN = /https?:\/\/\S+|www\.\S+/gi;
 
 /**
  * Last line of defence between the model and the DM: strip anything that
- * must never reach a recipient from an automated opener, collapse it to one
- * line, and enforce the length cap. Returns null when nothing usable is left.
+ * must never reach a recipient from an automated opener, lay it out in short
+ * lines, and enforce the length cap. Returns null when nothing usable is left.
  */
 export function sanitizeOpening(raw: string, maxChars: number): string | null {
-  let text = stripFullStops(raw)
+  let text = raw
     .replace(URL_PATTERN, "")
     .replace(/\{[a-z_]+\}/gi, "") // never let the model emit template tokens
     .replace(/[#＃]\S+/g, "")
-    .replace(/\s+/g, " ")
     .trim();
   // Models sometimes wrap the whole sentence in quotes despite instructions.
   text = text.replace(/^["「『“]+/, "").replace(/["」』”]+$/, "").trim();
-  if (!text) return null;
-  if ([...text].length > maxChars) {
-    text = [...text].slice(0, maxChars).join("").trimEnd();
-  }
+  text = capByLines(formatAiText(text), maxChars);
   return text || null;
 }
 

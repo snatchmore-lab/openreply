@@ -41,21 +41,22 @@ describe("decideFaqReply", () => {
       { answer: "「檔案會在留言後 5 分鐘內私訊給你」", confident: true },
       settings
     );
-    expect(out).toEqual({ kind: "answered", text: "檔案會在留言後 5 分鐘內私訊給你" });
+    expect(out).toEqual({ kind: "answered", text: "檔案會在留言後 5\n分鐘內私訊給你" });
   });
 
   it("caps the answer length", () => {
     const long = "字".repeat(400);
     const out = decideFaqReply({ answer: long, confident: true }, settings);
     expect(out.kind).toBe("answered");
-    expect([...out.text].length).toBe(300);
+    expect([...out.text].length).toBeLessThanOrEqual(300);
+    expect(out.text.split("\n").every((line) => [...line].length <= 10)).toBe(true);
   });
 });
 
 describe("sanitizeAnswer", () => {
   it("keeps URLs (the knowledge base may contain them) but strips template tokens", () => {
     expect(sanitizeAnswer("下載：https://rbancase.com/x {link}", 100)).toBe(
-      "下載：https://rbancase.com/x"
+      "下載：\nhttps://rbancase.com/x"
     );
   });
 });

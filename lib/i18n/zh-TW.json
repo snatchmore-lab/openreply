@@ -419,7 +419,6 @@
   "Max characters": "最多字數",
   "Type a fake comment to preview the opener": "輸入一則假留言來預覽開場白",
   "Generating…": "生成中…",
-  "Preview": "預覽",
   "Preview failed. Check the server's AI settings and try again.": "預覽失敗，請確認伺服器的 AI 設定後再試。",
   "The AI returned nothing usable; the DM would be sent as written.": "AI 沒有產出可用的句子，私訊會照原文送出。",
   "Use in OpenReply": "在 OpenReply 使用",
@@ -520,5 +519,12 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "Insert emoji": "插入表情符號",
+  "While we check the follow (optional)": "確認追蹤時先回這句（選填）",
+  "Checking your follow, one moment 🔍": "幫你確認追蹤中\n稍等一下下 🔍",
+  "Instagram can take up to a minute to show a new follow. This line is sent right after the tap so the chat isn't silent. Leave empty to send nothing.": "Instagram 最多要約一分鐘才會顯示新的追蹤。對方一按按鈕就先送這句，聊天室才不會空白。留空就不送。",
+  "If they still don't follow (optional)": "確認後仍未追蹤時回這句（選填）",
+  "Not following yet. Follow, then tap the button again 😊": "還沒收到你的追蹤唷\n追蹤完再按一次 😊",
+  "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "仍未追蹤時，附上同一個按鈕送出這句。留空就重送上面的追蹤提示。"
 }

@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
+import EmojiTextField from "@/components/emoji-text-field";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
 import { readCache, writeCache } from "@/lib/client-cache";
 import {
@@ -46,6 +47,8 @@ interface LoadedCampaign {
   requireFollow: boolean;
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
+  followCheckingMessage?: string | null;
+  followNotYetMessage?: string | null;
   followUpEnabled: boolean;
   followUpMessage: string | null;
   followUpDelayMinutes: number | null;
@@ -264,6 +267,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [followPromptMessage, setFollowPromptMessage] = useState("");
   const [followPromptButtonLabel, setFollowPromptButtonLabel] =
     useState("i'm following");
+  const [followCheckingMessage, setFollowCheckingMessage] = useState("");
+  const [followNotYetMessage, setFollowNotYetMessage] = useState("");
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpDelayMinutes, setFollowUpDelayMinutes] = useState(0);
@@ -383,6 +388,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setFollowPromptButtonLabel(
           c.followPromptButtonLabel ?? "i'm following"
         );
+        setFollowCheckingMessage(c.followCheckingMessage ?? "");
+        setFollowNotYetMessage(c.followNotYetMessage ?? "");
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
         setFollowUpDelayMinutes(c.followUpDelayMinutes ?? 0);
@@ -529,6 +536,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       followPromptButtonLabel: requireFollow
         ? followPromptButtonLabel.trim() || "i'm following"
         : "",
+      followCheckingMessage: requireFollow ? followCheckingMessage.trim() : "",
+      followNotYetMessage: requireFollow ? followNotYetMessage.trim() : "",
       followUpEnabled,
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
       followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
@@ -907,17 +916,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <div className="space-y-2">
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <input
-                    value={msg}
-                    onChange={(e) =>
-                      setPublicReplyMessages((prev) =>
-                        prev.map((m, idx) => (idx === i ? e.target.value : m))
-                      )
-                    }
-                    placeholder={t("Sent you a DM! 📩")}
-                    maxLength={1000}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  />
+                  <div className="min-w-0 flex-1">
+                    <EmojiTextField
+                      value={msg}
+                      onChange={(next) =>
+                        setPublicReplyMessages((prev) =>
+                          prev.map((m, idx) => (idx === i ? next : m))
+                        )
+                      }
+                      placeholder={t("Sent you a DM! 📩")}
+                      maxLength={1000}
+                    />
+                  </div>
                   {publicReplyMessages.length > 1 && (
                     <button
                       type="button"
@@ -982,12 +992,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </div>
             {openingDmEnabled && (
               <div className="mt-3 space-y-2">
-                <textarea
+                <EmojiTextField
+                  multiline
                   value={openingDmMessage}
-                  onChange={(e) => setOpeningDmMessage(e.target.value)}
+                  onChange={setOpeningDmMessage}
                   placeholder={t("Hey there! I'm so happy you're here 😊")}
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
                 <input
@@ -1012,12 +1021,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </div>
             {requireFollow && (
               <div className="mt-3 space-y-2">
-                <textarea
+                <EmojiTextField
+                  multiline
+                  rows={5}
                   value={followPromptMessage}
-                  onChange={(e) => setFollowPromptMessage(e.target.value)}
+                  onChange={setFollowPromptMessage}
                   placeholder={t("quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over")}
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
                 <input
@@ -1030,6 +1039,34 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 <p className="text-xs text-muted">
                   {t("We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we send it anyway.")}
                 </p>
+                <label className="block pt-1 text-xs font-medium text-foreground">
+                  {t("While we check the follow (optional)")}
+                </label>
+                <EmojiTextField
+                  multiline
+                  rows={2}
+                  value={followCheckingMessage}
+                  onChange={setFollowCheckingMessage}
+                  placeholder={t("Checking your follow, one moment 🔍")}
+                  maxLength={1000}
+                />
+                <p className="text-xs text-muted">
+                  {t("Instagram can take up to a minute to show a new follow. This line is sent right after the tap so the chat isn't silent. Leave empty to send nothing.")}
+                </p>
+                <label className="block pt-1 text-xs font-medium text-foreground">
+                  {t("If they still don't follow (optional)")}
+                </label>
+                <EmojiTextField
+                  multiline
+                  rows={2}
+                  value={followNotYetMessage}
+                  onChange={setFollowNotYetMessage}
+                  placeholder={t("Not following yet. Follow, then tap the button again 😊")}
+                  maxLength={1000}
+                />
+                <p className="text-xs text-muted">
+                  {t("Sent with the same button when the follow still isn't there. Leave empty to resend the message above.")}
+                </p>
               </div>
             )}
           </div>
@@ -1038,12 +1075,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         <Section title={t("And then, they will get")}>
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">{t("a DM with a link")}</span>
-            <textarea
+            <EmojiTextField
+              multiline
+              rows={5}
               value={dmMessage}
-              onChange={(e) => setDmMessage(e.target.value)}
+              onChange={setDmMessage}
               placeholder={t("Write a message")}
-              rows={3}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
               maxLength={1000}
             />
             <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
@@ -1193,12 +1230,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </div>
             {followUpEnabled && (
               <div className="mt-3 space-y-2">
-                <textarea
+                <EmojiTextField
+                  multiline
                   value={followUpMessage}
-                  onChange={(e) => setFollowUpMessage(e.target.value)}
+                  onChange={setFollowUpMessage}
                   placeholder={t("Btw just wanted to say thanks for following me, I appreciate the support 🙌")}
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
                 <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
