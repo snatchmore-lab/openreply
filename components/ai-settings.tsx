@@ -11,6 +11,7 @@ interface AiSettingsData {
   hourlyLimitPerUser: number;
   tone: string;
   maxReplyChars: number;
+  notifyEmail: string | null;
   scope: "workspace" | "account";
   inherited: boolean;
 }
@@ -32,6 +33,34 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
   const [data, setData] = useState<AiSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [testQuestion, setTestQuestion] = useState("");
+  const [testResult, setTestResult] = useState<{ kind: string; text?: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  async function runTest() {
+    if (!data || !testQuestion.trim()) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/ai/faq-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: testQuestion.trim(),
+          knowledgeBase: data.knowledgeBase,
+          handoffMessage: data.handoffMessage,
+          tone: data.tone === "professional" ? "professional" : "friendly",
+          maxReplyChars: data.maxReplyChars,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      setTestResult(res.ok && json?.success ? json.data : { kind: "unavailable" });
+    } catch {
+      setTestResult({ kind: "unavailable" });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   const load = useCallback(async (which: string) => {
     const qs = which === WORKSPACE ? "" : `?instagramAccountId=${encodeURIComponent(which)}`;
@@ -87,6 +116,7 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
           hourlyLimitPerUser: data.hourlyLimitPerUser,
           tone: data.tone === "professional" ? "professional" : "friendly",
           maxReplyChars: data.maxReplyChars,
+          notifyEmail: data.notifyEmail?.trim() ?? "",
         }),
       });
       const json = await res.json().catch(() => null);
@@ -214,6 +244,22 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
             </p>
           </div>
 
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-foreground">{t("Email me when a human is needed")}</label>
+            <input
+              type="email"
+              value={data.notifyEmail ?? ""}
+              disabled={disabled}
+              placeholder="name@example.com"
+              onChange={(e) => setData({ ...data, notifyEmail: e.target.value })}
+              maxLength={200}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
+            />
+            <p className="text-xs text-muted">
+              {t("One email each time the bot hands a conversation to you, with the question. Leave empty for no email.")}
+            </p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-1 text-xs text-muted">
               {t("Max bot replies per person per hour")}
@@ -261,6 +307,48 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
                 <option value="professional">{t("Professional tone")}</option>
               </select>
             </label>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <span className="text-sm font-medium text-foreground">{t("Test the bot")}</span>
+            <p className="text-xs text-muted">
+              {t("Ask a question to see how the bot would answer with the knowledge base above, saved or not. Nothing is sent to Instagram.")}
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                value={testQuestion}
+                onChange={(e) => setTestQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void runTest();
+                }}
+                maxLength={300}
+                placeholder={t("e.g. Is the diary free?")}
+                disabled={configured === false}
+                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={() => void runTest()}
+                disabled={configured === false || testing || !testQuestion.trim()}
+                className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface disabled:opacity-50"
+              >
+                {testing ? t("Generating…") : t("Ask")}
+              </button>
+            </div>
+            {testResult && (
+              <div className="rounded-lg bg-surface px-3 py-2 text-sm">
+                {testResult.kind === "unavailable" ? (
+                  <span className="text-warning">{t("Preview failed. Check the server's AI settings and try again.")}</span>
+                ) : (
+                  <>
+                    <span className={`mr-2 text-xs font-medium ${testResult.kind === "handoff" ? "text-warning" : "text-accent"}`}>
+                      {testResult.kind === "handoff" ? t("Hands off to you") : t("Answers")}
+                    </span>
+                    <span className="text-foreground">{testResult.text}</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

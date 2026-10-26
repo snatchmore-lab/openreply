@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { decryptToken, encryptToken } from "@/lib/meta/oauth";
 import { refreshLongLivedToken } from "@/lib/meta/client";
+import { getWorkerHealth } from "@/lib/ops/worker-health";
+import { alertWorkerDown } from "@/lib/notify/alerts";
 
 const DAYS_BEFORE_EXPIRY = 10;
 
@@ -14,6 +16,24 @@ export async function GET(request: NextRequest) {
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
+  }
+
+  // Daily watchdog: the worker cannot report its own death, so the web app's
+  // daily cron checks its heartbeat and emails every workspace owner with a
+  // connected account when it is gone (most often: Railway credit ran out).
+  try {
+    const worker = await getWorkerHealth();
+    if (!worker.healthy) {
+      const workspaces = await prisma.instagramAccount.findMany({
+        distinct: ["workspaceId"],
+        select: { workspaceId: true },
+      });
+      for (const { workspaceId } of workspaces) {
+        await alertWorkerDown(workspaceId, worker.heartbeat?.checkedAt ?? null);
+      }
+    }
+  } catch (error) {
+    console.error("[cron] Worker watchdog failed:", error instanceof Error ? error.message : error);
   }
 
   const cutoffDate = new Date();

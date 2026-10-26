@@ -502,6 +502,8 @@ model WorkspaceAiSettings {
   /// "friendly" | "professional"
   tone               String   @default("friendly")
   maxReplyChars      Int      @default(300)
+  /// Where to email when a conversation is handed to a human. Null = no email.
+  notifyEmail        String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -520,6 +522,8 @@ model InstagramAccountAiSettings {
   hourlyLimitPerUser Int      @default(3)
   tone               String   @default("friendly")
   maxReplyChars      Int      @default(300)
+  /// Where to email when a conversation is handed to a human. Null = no email.
+  notifyEmail        String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

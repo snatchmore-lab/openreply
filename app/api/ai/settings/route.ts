@@ -17,6 +17,7 @@ const DEFAULTS = {
   hourlyLimitPerUser: 3,
   tone: "friendly",
   maxReplyChars: 300,
+  notifyEmail: null as string | null,
 };
 
 const updateSchema = z.object({
@@ -26,6 +27,8 @@ const updateSchema = z.object({
   hourlyLimitPerUser: z.number().int().min(1).max(20).optional(),
   tone: z.enum(["friendly", "professional"]).optional(),
   maxReplyChars: z.number().int().min(50).max(1000).optional(),
+  // Empty string clears it.
+  notifyEmail: z.union([z.string().email().max(200), z.literal("")]).optional().nullable(),
 });
 
 type SettingsFields = typeof DEFAULTS;
@@ -38,6 +41,7 @@ function pick(row: SettingsFields & Record<string, unknown>): SettingsFields {
     hourlyLimitPerUser: row.hourlyLimitPerUser,
     tone: row.tone,
     maxReplyChars: row.maxReplyChars,
+    notifyEmail: row.notifyEmail ?? null,
   };
 }
 
@@ -107,6 +111,13 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid settings" }, { status: 400 });
   }
 
+  const update = {
+    ...parsed.data,
+    ...(parsed.data.notifyEmail !== undefined
+      ? { notifyEmail: parsed.data.notifyEmail?.trim() || null }
+      : {}),
+  };
+
   const account = await resolveAccount(
     context.workspaceId,
     request.nextUrl.searchParams.get("instagramAccountId")
@@ -119,8 +130,8 @@ export async function PUT(request: NextRequest) {
     const base = workspaceRow ? pick(workspaceRow) : DEFAULTS;
     const row = await prisma.instagramAccountAiSettings.upsert({
       where: { instagramAccountId: account.id },
-      create: { instagramAccountId: account.id, ...base, ...parsed.data },
-      update: parsed.data,
+      create: { instagramAccountId: account.id, ...base, ...update },
+      update,
     });
     return NextResponse.json({
       success: true,
@@ -130,8 +141,8 @@ export async function PUT(request: NextRequest) {
 
   const row = await prisma.workspaceAiSettings.upsert({
     where: { workspaceId: context.workspaceId },
-    create: { workspaceId: context.workspaceId, ...DEFAULTS, ...parsed.data },
-    update: parsed.data,
+    create: { workspaceId: context.workspaceId, ...DEFAULTS, ...update },
+    update,
   });
   return NextResponse.json({
     success: true,

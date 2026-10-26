@@ -22,6 +22,7 @@ import {
 import { completeJson } from "./service";
 import { normalizeTone } from "./opening";
 import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
+import { isValidEmail, sendThrottledNotifyEmail } from "@/lib/notify/email";
 import {
   buildFaqContextBlock,
   buildFaqUserPrompt,
@@ -44,6 +45,43 @@ export interface FaqSettings {
   hourlyLimitPerUser: number;
   tone: string;
   maxReplyChars: number;
+  notifyEmail?: string | null;
+}
+
+/**
+ * Dry run for the dashboard test bench: same prompt, same decision rules, no
+ * conversation state, nothing sent. Uses the settings as typed in the form,
+ * so the owner can try an unsaved knowledge base.
+ */
+export async function previewFaqAnswer(input: {
+  workspaceId: string;
+  question: string;
+  settings: Pick<FaqSettings, "knowledgeBase" | "handoffMessage" | "tone" | "maxReplyChars">;
+}): Promise<
+  | { kind: "answered" | "handoff"; text: string }
+  | { kind: "unavailable"; detail?: string }
+> {
+  if (!input.settings.knowledgeBase.trim()) {
+    return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
+  }
+  const maxChars = Math.min(1000, Math.max(50, input.settings.maxReplyChars));
+  const result = await completeJson({
+    feature: "faq",
+    workspaceId: input.workspaceId,
+    system: FAQ_SYSTEM_PROMPT,
+    context: buildFaqContextBlock(input.settings.knowledgeBase),
+    user: buildFaqUserPrompt({
+      question: input.question.slice(0, 1000),
+      history: [],
+      tone: normalizeTone(input.settings.tone),
+      maxChars,
+    }),
+    schema: FaqOutput,
+    cacheScope: ["preview"],
+    maxTokens: 2000,
+  });
+  if (!result.ok) return { kind: "unavailable", detail: result.detail };
+  return decideFaqReply(result.result, { ...input.settings, maxReplyChars: maxChars });
 }
 
 export type FaqOutcome =
@@ -332,6 +370,27 @@ export async function handleFaqMessage(input: {
       },
     }),
   ]);
+
+  if (decision.kind === "handoff" && isValidEmail(settings.notifyEmail)) {
+    // One email per handoff; the thread stays NEEDS_HUMAN afterwards, so this
+    // fires again only if someone hands it back to the bot and it hands off
+    // again. The throttle key guards against a retried job double-sending.
+    await sendThrottledNotifyEmail(`handoff-${conversation.id}`, 60 * 60, {
+      to: settings.notifyEmail,
+      subject: `【@${account.username}】有一則私訊需要你親自回覆`,
+      text: [
+        `@${account.username} 的問答機器人答不了這個問題，已經回覆對方：`,
+        `「${decision.text}」`,
+        "",
+        "對方的訊息：",
+        input.messageText.slice(0, 500),
+        "",
+        "請直接打開 Instagram App 回覆對方。你一回覆，機器人就會自動停止回這個人。",
+        "",
+        "（這封信由 OpenReply 自動寄出）",
+      ].join("\n"),
+    }).catch(() => {});
+  }
 
   return decision.kind === "answered"
     ? { kind: "answered", text: decision.text, cached: result.cached }

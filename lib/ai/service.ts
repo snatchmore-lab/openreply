@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { Prisma } from "@/app/generated/prisma/client";
+import { alertAiUnavailable } from "@/lib/notify/alerts";
 
 export const DEFAULT_AI_MODEL = "claude-haiku-5-5";
 export const DEFAULT_DAILY_CALL_LIMIT = 2000;
@@ -240,10 +241,20 @@ export async function completeJson<T>(
           },
         })
         .catch(() => {});
+      await alertAiUnavailable(options.workspaceId, "key").catch(() => {});
       return { ok: false, reason: "error", detail: "invalid AI_API_KEY" };
     }
     if (error instanceof Anthropic.RateLimitError) {
       return { ok: false, reason: "error", detail: "rate limited by AI provider" };
+    }
+    // An empty prepaid balance comes back as a 400 whose message mentions the
+    // credit balance. Same fallback, but the owner gets an email to top up.
+    if (
+      error instanceof Anthropic.BadRequestError &&
+      /credit balance/i.test(error.message)
+    ) {
+      await alertAiUnavailable(options.workspaceId, "credit").catch(() => {});
+      return { ok: false, reason: "error", detail: "AI credit balance too low" };
     }
     if (error instanceof Anthropic.APIError) {
       return { ok: false, reason: "error", detail: `AI API error ${error.status}` };
