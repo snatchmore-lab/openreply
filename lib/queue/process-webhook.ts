@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
-import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
+import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
+import { wasSentByUs } from '@/lib/instagram/sent-mids';
+import { handleHumanEcho } from '@/lib/ai/faq';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -126,6 +128,30 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           data: { workspaceId: account.workspaceId },
         });
       }
+    }
+
+    // Outbound echoes. One this system did not send means the account owner
+    // replied from the Instagram app: the FAQ bot steps back from that thread.
+    // Handled inline (one indexed lookup, one update) rather than queued, so
+    // the bot cannot answer in the gap between the human's reply and a job.
+    const echoEvents = parseEchoEvents(
+      payload as Parameters<typeof parseEchoEvents>[0]
+    );
+
+    for (const event of echoEvents) {
+      if (!accountMap.has(event.instagramAccountId)) continue;
+      if (await wasSentByUs(event.messageId)) continue;
+      await handleHumanEcho({
+        instagramAccountId: event.instagramAccountId,
+        recipientId: event.recipientId,
+        messageId: event.messageId,
+        messageText: event.messageText,
+      }).catch((error: unknown) => {
+        console.error(
+          "[FAQ bot] Failed to record human reply:",
+          error instanceof Error ? error.message : error
+        );
+      });
     }
 
     // If a user reads the opening DM and never taps the button, deliver the

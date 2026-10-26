@@ -84,6 +84,57 @@ export function decideFaqReply(
   return { kind: "answered", text };
 }
 
+/**
+ * The account owner replied from the Instagram app (an echo whose message id
+ * this system never sent). Hand the thread to the human: the bot goes silent
+ * and the dashboard shows "Taken over". Only threads the bot has already
+ * touched are affected; a human replying in a thread the bot never saw
+ * creates nothing. The human's text is kept so the bot's later context and
+ * the dashboard history include it.
+ */
+export async function handleHumanEcho(input: {
+  instagramAccountId: string; // IG user id (instagramId), as in the webhook
+  recipientId: string;
+  messageId: string;
+  messageText: string;
+}): Promise<"taken-over" | "already-human" | "no-thread"> {
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      senderId: input.recipientId,
+      instagramAccount: { instagramId: input.instagramAccountId },
+    },
+    select: { id: true, status: true },
+  });
+  if (!conversation) return "no-thread";
+
+  await prisma.conversationMessage
+    .create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUT_HUMAN",
+        text: input.messageText,
+        messageId: input.messageId,
+      },
+    })
+    .catch(() => {
+      // Duplicate echo delivery; the unique messageId already recorded it.
+    });
+
+  if (conversation.status === "HUMAN") {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date() },
+    });
+    return "already-human";
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { status: "HUMAN", takenOverAt: new Date(), lastMessageAt: new Date() },
+  });
+  return "taken-over";
+}
+
 export async function handleFaqMessage(input: {
   instagramAccountId: string; // IG user id (instagramId), as in the webhook
   senderId: string;

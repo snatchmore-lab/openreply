@@ -94,6 +94,45 @@ export interface WebhookMessageEvent {
   senderId: string;
 }
 
+/**
+ * An outbound message echoed back by Instagram: the connected account sent
+ * `text` to `recipientId`. Could be this app or the owner typing in Instagram.
+ */
+export interface WebhookEchoEvent {
+  instagramAccountId: string;
+  recipientId: string;
+  messageId: string;
+  messageText: string;
+}
+
+export function parseEchoEvents(payload: WebhookPayload): WebhookEchoEvent[] {
+  const events: WebhookEchoEvent[] = [];
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message?.is_echo || message.is_deleted) continue;
+
+      const messageId = message.mid;
+      const senderId = messaging.sender?.id;
+      const recipientId = messaging.recipient?.id;
+      const accountId = entry.id ?? senderId;
+      if (!messageId || !senderId || !recipientId || !accountId) continue;
+      // An echo is by definition from the account; anything else is noise.
+      if (senderId !== accountId || recipientId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        recipientId,
+        messageId,
+        messageText: message.text?.trim() ?? "",
+      });
+    }
+  }
+  return events;
+}
+
 export interface WebhookPostbackEvent {
   instagramAccountId: string;
   userId: string;

@@ -75,3 +75,34 @@ describe("FAQ prompts", () => {
     expect(user).toContain("Character limit: 200");
   });
 });
+
+describe("trackSent", () => {
+  it("records the message id after a successful send and passes the result through", async () => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://test";
+    const set = vi.fn().mockResolvedValue("OK");
+    const exists = vi.fn().mockResolvedValue(1);
+    vi.doMock("@/lib/queue/client", () => ({ getRedisConnection: () => ({ set, exists }) }));
+    const { trackSent, wasSentByUs } = await import("@/lib/instagram/sent-mids");
+
+    const result = await trackSent(Promise.resolve({ message_id: "mid_1", recipient_id: "u" }));
+    expect(result).toEqual({ message_id: "mid_1", recipient_id: "u" });
+    await Promise.resolve();
+    expect(set).toHaveBeenCalledWith("openreply:sent-mid:mid_1", "1", "EX", 900);
+    expect(await wasSentByUs("mid_1")).toBe(true);
+  });
+
+  it("treats a Redis failure as 'not ours' so the bot only gets quieter", async () => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://test";
+    vi.doMock("@/lib/queue/client", () => ({
+      getRedisConnection: () => ({
+        set: vi.fn().mockRejectedValue(new Error("down")),
+        exists: vi.fn().mockRejectedValue(new Error("down")),
+      }),
+    }));
+    const { trackSent, wasSentByUs } = await import("@/lib/instagram/sent-mids");
+    await expect(trackSent(Promise.resolve({ message_id: "mid_2" }))).resolves.toEqual({ message_id: "mid_2" });
+    expect(await wasSentByUs("mid_2")).toBe(false);
+  });
+});
