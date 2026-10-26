@@ -17,6 +17,7 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { readCache, writeCache } from "@/lib/client-cache";
 import type { ConversationListItem } from "@/app/api/instagram/conversations/route";
 import type { ThreadMessage } from "@/app/api/instagram/conversations/[id]/route";
+import type { AiConversationItem } from "@/app/api/ai/conversations/route";
 
 const POLL_MS = 12_000;
 // Cached list/threads are shown instantly on revisit, then revalidated in the
@@ -35,6 +36,27 @@ function formatTime(iso: string | null, locale: Locale): string {
   return sameDay
     ? d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })
     : d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+}
+
+function AiStatusBadge({ status }: { status: AiConversationItem["status"] }) {
+  const { t } = useI18n();
+  const style =
+    status === "NEEDS_HUMAN"
+      ? "border-warning/40 text-warning"
+      : status === "HUMAN"
+        ? "border-border text-muted"
+        : "border-accent/40 text-accent";
+  const label =
+    status === "NEEDS_HUMAN"
+      ? t("Needs a human")
+      : status === "HUMAN"
+        ? t("Taken over")
+        : t("AI replying");
+  return (
+    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${style}`}>
+      {label}
+    </span>
+  );
 }
 
 export default function InboxPage() {
@@ -63,6 +85,52 @@ export default function InboxPage() {
   const conversationRequests = useRef(new Set<string>());
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
+
+  // FAQ-bot state per thread, keyed by the other side's IGSID. Instagram's own
+  // thread list is the source of truth for the inbox; this only decorates it.
+  const [aiThreads, setAiThreads] = useState<Record<string, AiConversationItem>>({});
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const loadAiThreads = useCallback(async (accountId: string) => {
+    try {
+      const res = await fetch(`/api/ai/conversations?instagramAccountId=${accountId}`);
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) return;
+      const map: Record<string, AiConversationItem> = {};
+      for (const item of json.data as AiConversationItem[]) map[item.senderId] = item;
+      setAiThreads(map);
+    } catch {
+      // Decoration only; a failure here must not break the inbox.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    // First load on the next tick, then poll; the bot state changes on its own
+    // as messages arrive, so a plain fetch-on-mount would go stale.
+    const first = setTimeout(() => void loadAiThreads(selectedAccountId), 0);
+    const timer = setInterval(() => void loadAiThreads(selectedAccountId), 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [selectedAccountId, loadAiThreads]);
+
+  async function setAiThreadStatus(conversationId: string, action: "takeover" | "resume") {
+    setAiBusy(true);
+    try {
+      await fetch(`/api/ai/conversations/${conversationId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      await loadAiThreads(selectedAccountId);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  const activeAi = active?.contact.id ? aiThreads[active.contact.id] ?? null : null;
 
   // Accounts for the selector; default to the first connected account. Uses the
   // lightweight accounts endpoint (one query) rather than the heavy dashboard
@@ -307,8 +375,13 @@ export default function InboxPage() {
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {c.detailsUnavailable ? t("Details unavailable") : `@${c.contact.username ?? "unknown"}`}
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {c.detailsUnavailable ? t("Details unavailable") : `@${c.contact.username ?? "unknown"}`}
+                        </span>
+                        {aiThreads[c.contact.id] && (
+                          <AiStatusBadge status={aiThreads[c.contact.id].status} />
+                        )}
                       </span>
                       <span className="shrink-0 text-[11px] text-zinc-500">
                         {formatTime(c.updatedTime, locale)}
@@ -353,7 +426,35 @@ export default function InboxPage() {
                 <span className="truncate">
                   {active.detailsUnavailable ? t("Details unavailable") : `@${active.contact.username ?? "unknown"}`}
                 </span>
+                {activeAi && (
+                  <span className="ml-auto flex shrink-0 items-center gap-2">
+                    <AiStatusBadge status={activeAi.status} />
+                    <button
+                      type="button"
+                      disabled={aiBusy}
+                      onClick={() =>
+                        void setAiThreadStatus(
+                          activeAi.id,
+                          activeAi.status === "HUMAN" ? "resume" : "takeover"
+                        )
+                      }
+                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-hover disabled:opacity-50"
+                    >
+                      {activeAi.status === "HUMAN" ? t("Hand back to AI") : t("Take over")}
+                    </button>
+                  </span>
+                )}
               </div>
+              {activeAi?.status === "HUMAN" && (
+                <p className="border-b border-border bg-surface px-4 py-2 text-xs text-muted">
+                  {t("You are handling this conversation; the bot stays silent.")}
+                </p>
+              )}
+              {activeAi?.status === "NEEDS_HUMAN" && (
+                <p className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-warning">
+                  {t("The bot could not answer and sent your handoff message.")}
+                </p>
+              )}
 
               <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
                 {active.detailsUnavailable ? (

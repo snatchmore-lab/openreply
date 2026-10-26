@@ -41,6 +41,12 @@ export interface CompleteJsonOptions<T> {
   feature: AiFeature;
   workspaceId: string;
   system: string;
+  /**
+   * Optional second system block, cached separately from `system`. Meant for
+   * per-workspace reference text (the FAQ knowledge base) that is large,
+   * changes rarely, and is shared by every call for that workspace.
+   */
+  context?: string;
   user: string;
   schema: z.ZodType<T>;
   /** Extra strings that identify the call for caching (campaign id, settings). */
@@ -132,6 +138,7 @@ export async function completeJson<T>(
     options.feature,
     model,
     options.system,
+    options.context ?? "",
     options.user,
     ...(options.cacheScope ?? []),
   ]);
@@ -158,6 +165,15 @@ export async function completeJson<T>(
       output_config: { effort: "low", format: zodOutputFormat(options.schema) },
       system: [
         { type: "text", text: options.system, cache_control: { type: "ephemeral" } },
+        ...(options.context
+          ? [
+              {
+                type: "text" as const,
+                text: options.context,
+                cache_control: { type: "ephemeral" as const },
+              },
+            ]
+          : []),
       ],
       messages: [{ role: "user", content: options.user }],
     });

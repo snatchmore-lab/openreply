@@ -73,6 +73,54 @@ export function buildOpeningUserPrompt(input: OpeningPromptInput): string {
   return lines.join("\n");
 }
 
+// ─── Feature 3: FAQ bot ─────────────────────────────────────────────────────
+
+export interface FaqHistoryItem {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export interface FaqPromptInput {
+  question: string;
+  history: FaqHistoryItem[];
+  tone: OpeningTone;
+  maxChars: number;
+}
+
+export const FAQ_SYSTEM_PROMPT = `You answer Instagram direct messages on behalf of a creator, using ONLY the knowledge base provided in the next system block.
+
+Rules:
+- Answer only from the knowledge base. If the knowledge base does not contain the answer, or the question is about something else (other people, news, medical or legal advice, anything not in the knowledge base), set confident=false and leave answer empty. The system will send the creator's own handoff message instead; do not write one yourself.
+- If the person asks whether they are talking to a bot or a real person, answer honestly that this is an automated reply and the creator will see the conversation, and set confident=true.
+- If the message is just thanks, a greeting, or an emoji with no question, reply with one short friendly line and set confident=true.
+- Reply in the language of the message. Default to Traditional Chinese (台灣用語).
+- Keep the answer within the character limit. Plain text only: no markdown, no bullet lists, no headings.
+- Never invent prices, dates, links, promises or availability that are not in the knowledge base. Never include a URL unless that exact URL appears in the knowledge base.
+- Never ask for personal data (phone, address, payment details).
+- Do not pretend to be the creator's own words in first person unless the knowledge base is written that way.
+
+Respond only with the JSON object.`;
+
+export function buildFaqContextBlock(knowledgeBase: string): string {
+  return `KNOWLEDGE BASE (the only source you may use):\n\n${knowledgeBase.trim()}`;
+}
+
+export function buildFaqUserPrompt(input: FaqPromptInput): string {
+  const toneLine =
+    input.tone === "professional"
+      ? "Tone: professional, warm, concise, no emoji."
+      : "Tone: friendly and casual, at most one emoji.";
+  const lines: string[] = [toneLine, `Character limit: ${input.maxChars}`];
+  if (input.history.length > 0) {
+    lines.push("", "Recent conversation (oldest first):");
+    for (const item of input.history) {
+      lines.push(`${item.role === "user" ? "User" : "You"}: ${item.text}`);
+    }
+  }
+  lines.push("", "New message from the user:", input.question);
+  return lines.join("\n");
+}
+
 export function buildMatchUserPrompt(input: MatchPromptInput): string {
   const lines: string[] = [];
   lines.push(`Channel: ${input.channel === "dm" ? "direct message" : "post comment"}`);

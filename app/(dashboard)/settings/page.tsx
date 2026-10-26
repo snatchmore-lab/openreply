@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { Suspense, useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
 import { ZernioConnection } from "@/components/zernio-connection";
+import { AiSettings } from "@/components/ai-settings";
 import { InstagramConnectNotice } from "@/components/instagram-connect-notice";
 
 interface SettingsData {
@@ -148,6 +149,8 @@ export default function SettingsPage() {
       </section>
 
       <ZernioConnection canManage={canManageMembers} />
+
+      <AiSettings canManage={canManageMembers} />
 
       <section className="panel rounded p-4 sm:p-6">
         <h2 className="text-base font-semibold mb-6">{t("Instagram Connection")}</h2>

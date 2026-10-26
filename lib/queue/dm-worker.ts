@@ -41,6 +41,7 @@ import {
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { aiMatch, type AiMatchDecision } from "@/lib/ai/match";
 import { composeDmWithOpening, generateOpening } from "@/lib/ai/opening";
+import { handleFaqMessage } from "@/lib/ai/faq";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
@@ -1431,6 +1432,10 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   });
 
   const dedupeId = `dm:${messageId}`;
+  // True once any campaign claimed this message. The FAQ bot only looks at
+  // messages no campaign wanted, so a keyword reply and a bot reply never both
+  // go out for one message.
+  let handledByCampaign = false;
 
   for (const automation of automations) {
     let matchResult = automation.matchAnyWord
@@ -1467,6 +1472,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     }
 
     if (!matchResult.matched) continue;
+    handledByCampaign = true;
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -1699,6 +1705,28 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         },
       });
       throw error;
+    }
+  }
+
+  // FAQ bot (feature 3): a DM no campaign claimed. Everything inside is
+  // guarded (feature off, duplicate, human took over, hourly cap, AI down)
+  // and returns silently; an unexpected throw is logged, never retried, so a
+  // bot hiccup cannot block the queue.
+  if (!handledByCampaign) {
+    try {
+      const outcome = await handleFaqMessage({
+        instagramAccountId,
+        senderId,
+        messageId,
+        messageText,
+      });
+      if (outcome.kind !== "silent") {
+        console.log(`[FAQ bot] ${outcome.kind} for ${senderId}`);
+      } else if (outcome.reason !== "disabled" && outcome.reason !== "duplicate") {
+        console.log(`[FAQ bot] silent (${outcome.reason}) for ${senderId}`);
+      }
+    } catch (error) {
+      console.error("[FAQ bot] Unexpected error:", formatError(error));
     }
   }
 }

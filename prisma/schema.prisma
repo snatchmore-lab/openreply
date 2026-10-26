@@ -85,6 +85,8 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  aiSettings        WorkspaceAiSettings?
+  conversations     Conversation[]
 
   @@index([ownerId])
 }
@@ -144,6 +146,7 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  conversations     Conversation[]
 
   @@index([workspaceId])
 }
@@ -475,4 +478,85 @@ model AiCache {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+/// Workspace-level settings for the FAQ bot (feature 3). One row per
+/// workspace, created on first save. With `faqEnabled` false, or an empty
+/// knowledge base, inbound DMs that match no campaign are ignored exactly as
+/// stock OpenReply ignores them.
+model WorkspaceAiSettings {
+  workspaceId        String   @id
+  faqEnabled         Boolean  @default(false)
+  /// Plain-text FAQ / knowledge base the bot may answer from. Nothing else.
+  knowledgeBase      String   @default("")
+  /// Sent once when the bot cannot answer; the conversation is then flagged.
+  handoffMessage     String   @default("這個問題我幫你轉給本人回覆，請稍等一下 🙏")
+  /// Max bot replies to one person per rolling hour.
+  hourlyLimitPerUser Int      @default(3)
+  /// "friendly" | "professional"
+  tone               String   @default("friendly")
+  maxReplyChars      Int      @default(300)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+enum ConversationStatus {
+  /// The bot may reply.
+  AI
+  /// The bot could not answer, sent the handoff message, and is now silent.
+  NEEDS_HUMAN
+  /// A person took over from the dashboard; the bot stays silent.
+  HUMAN
+}
+
+enum ConversationMessageDirection {
+  IN
+  OUT_AI
+  OUT_HUMAN
+}
+
+/// One DM thread between a connected account and one Instagram user, as seen
+/// by the FAQ bot. Only threads the bot has looked at exist here; the inbox
+/// still reads the full thread from Instagram.
+model Conversation {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  instagramAccountId String
+  /// The other participant's IGSID.
+  senderId           String
+  senderName         String?
+  status             ConversationStatus @default(AI)
+  aiReplyCount       Int                @default(0)
+  lastInboundAt      DateTime?
+  lastMessageAt      DateTime?
+  needsHumanAt       DateTime?
+  takenOverAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount      @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  messages         ConversationMessage[]
+
+  @@unique([instagramAccountId, senderId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, lastMessageAt])
+}
+
+model ConversationMessage {
+  id             String                       @id @default(cuid())
+  conversationId String
+  direction      ConversationMessageDirection
+  text           String
+  /// Instagram message id for inbound messages (dedup); null for bot replies.
+  messageId      String?                      @unique
+  /// For OUT_AI: { confident, cached, model, handoff }
+  aiMeta         Json?
+  createdAt      DateTime                     @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
