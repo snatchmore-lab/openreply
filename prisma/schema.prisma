@@ -147,6 +147,7 @@ model InstagramAccount {
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
   conversations     Conversation[]
+  aiSettings        InstagramAccountAiSettings?
 
   @@index([workspaceId])
 }
@@ -505,6 +506,24 @@ model WorkspaceAiSettings {
   updatedAt          DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// Per-account FAQ bot settings. When a row exists for an account it wins
+/// over the workspace row entirely; without one the account inherits the
+/// workspace settings. Lets one workspace run several Instagram accounts
+/// with different knowledge bases.
+model InstagramAccountAiSettings {
+  instagramAccountId String   @id
+  faqEnabled         Boolean  @default(false)
+  knowledgeBase      String   @default("")
+  handoffMessage     String   @default("這個問題我幫你轉給本人回覆，請稍等一下 🙏")
+  hourlyLimitPerUser Int      @default(3)
+  tone               String   @default("friendly")
+  maxReplyChars      Int      @default(300)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
 }
 
 enum ConversationStatus {

@@ -143,11 +143,12 @@ export async function handleFaqMessage(input: {
 }): Promise<FaqOutcome> {
   const account = await prisma.instagramAccount.findUnique({
     where: { instagramId: input.instagramAccountId },
-    include: { workspace: { include: { aiSettings: true } } },
+    include: { aiSettings: true, workspace: { include: { aiSettings: true } } },
   });
   if (!account) return { kind: "silent", reason: "no-account" };
 
-  const settings = account.workspace.aiSettings;
+  // Account row wins outright; otherwise inherit the workspace defaults.
+  const settings = account.aiSettings ?? account.workspace.aiSettings;
   if (!settings || !settings.faqEnabled || !settings.knowledgeBase.trim()) {
     return { kind: "silent", reason: "disabled" };
   }
