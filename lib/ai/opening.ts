@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { completeJson } from "./service";
+import { stripFullStops } from "./text";
 import {
   buildOpeningUserPrompt,
   OPENING_SYSTEM_PROMPT,
@@ -51,7 +52,7 @@ const URL_PATTERN = /https?:\/\/\S+|www\.\S+/gi;
  * line, and enforce the length cap. Returns null when nothing usable is left.
  */
 export function sanitizeOpening(raw: string, maxChars: number): string | null {
-  let text = raw
+  let text = stripFullStops(raw)
     .replace(URL_PATTERN, "")
     .replace(/\{[a-z_]+\}/gi, "") // never let the model emit template tokens
     .replace(/[#＃]\S+/g, "")

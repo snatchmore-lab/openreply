@@ -53,6 +53,7 @@ Rules:
 - Never include a URL, a call to action, a promise, a price, or anything the creator did not say. Never ask a question that needs an answer.
 - No hashtags, no quotation marks around the whole sentence, at most one emoji, and only if the tone is friendly.
 - Stay within the character limit you are given; shorter is better.
+- Never use the Chinese full stop 「。」. Use a space or a line break between sentences, and end without punctuation or with an emoji.
 - Never mention that you are an AI or that the message is automated.
 
 Respond only with the JSON object.`;
@@ -95,6 +96,7 @@ Rules:
 - If the message is just thanks, a greeting, or an emoji with no question, reply with one short friendly line and set confident=true.
 - Reply in the language of the message. Default to Traditional Chinese (台灣用語).
 - Keep the answer within the character limit. Plain text only: no markdown, no bullet lists, no headings.
+- Never use the Chinese full stop 「。」. Use a space or a line break between sentences.
 - Never invent prices, dates, links, promises or availability that are not in the knowledge base. Never include a URL unless that exact URL appears in the knowledge base.
 - Never ask for personal data (phone, address, payment details).
 - Do not pretend to be the creator's own words in first person unless the knowledge base is written that way.
@@ -137,6 +139,7 @@ Rules:
 - Keep roughly the same length and the same number of emoji (you may swap an emoji for a similar one).
 - You may glance at the commenter's text to pick a natural phrasing, but do not answer it or quote it.
 - Plain text only, one message.
+- Never use the Chinese full stop 「。」, even if the template had one.
 
 Respond only with the JSON object.`;
 

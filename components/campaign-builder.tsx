@@ -113,6 +113,15 @@ function Radio({
   );
 }
 
+// New campaigns start with five public-reply slots: five variants is the
+// baseline that keeps replies under one post from looking identical.
+const DEFAULT_PUBLIC_REPLY_SLOTS = 5;
+function padReplies(list: string[]): string[] {
+  const out = [...list];
+  while (out.length < DEFAULT_PUBLIC_REPLY_SLOTS) out.push("");
+  return out;
+}
+
 function Toggle({
   on,
   onToggle,
@@ -238,7 +247,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }, []);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
-  const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
+  const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>(() => padReplies([]));
 
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
@@ -354,7 +363,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             ? c.publicReplyMessages
             : c.publicReplyMessage
               ? [c.publicReplyMessage]
-              : [""]
+              : padReplies([])
         );
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
@@ -420,7 +429,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setKeywordText((row.keywords ?? []).join(", "));
     setDmMessage(row.dmMessage ?? "");
     setPublicReplyEnabled(Boolean(row.publicReply));
-    setPublicReplyMessages(row.publicReply ? [row.publicReply] : [""]);
+    setPublicReplyMessages(padReplies(row.publicReply ? [row.publicReply] : []));
     const hasOpening = Boolean(row.openingDmMessage);
     setOpeningDmEnabled(hasOpening);
     setOpeningDmMessage(row.openingDmMessage ?? "");

@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { completeJson } from "./service";
 import { buildVaryUserPrompt, VARY_SYSTEM_PROMPT } from "./prompts";
+import { stripFullStops } from "./text";
 
 const VaryOutput = z.object({ reply: z.string().max(1200) });
 
@@ -32,7 +33,7 @@ function sameSet(a: string[], b: string[]): boolean {
  * mentions. Exposed for tests.
  */
 export function acceptVariation(template: string, candidate: string): string | null {
-  const text = candidate.replace(/\s+/g, " ").trim();
+  const text = stripFullStops(candidate).replace(/\s+/g, " ").trim();
   if (!text) return null;
   if ([...text].length > Math.max(20, Math.ceil([...template].length * 1.6))) return null;
   if (!sameSet(sortedMatches(template, TOKEN_PATTERN), sortedMatches(text, TOKEN_PATTERN))) {

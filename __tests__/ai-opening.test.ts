@@ -115,3 +115,20 @@ describe("composeDmWithOpening", () => {
     expect(composeDmWithOpening(null, "連結在這：{link}")).toBe("連結在這：{link}");
   });
 });
+
+describe("stripFullStops", () => {
+  it("removes every Chinese full stop from AI text", async () => {
+    const { stripFullStops } = await import("@/lib/ai/text");
+    expect(stripFullStops("收到你的留言了。日記馬上傳給你。")).toBe("收到你的留言了 日記馬上傳給你");
+    expect(stripFullStops("睡不好真的很辛苦。🙏")).toBe("睡不好真的很辛苦 🙏");
+    expect(stripFullStops("「好的。」")).toBe("「好的」");
+    expect(stripFullStops("沒有句號")).toBe("沒有句號");
+  });
+
+  it("applies to openers, FAQ answers and reply variations", async () => {
+    const { sanitizeOpening } = await import("@/lib/ai/opening");
+    const { acceptVariation } = await import("@/lib/ai/vary");
+    expect(sanitizeOpening("看到你想睡好一點。", 40)).toBe("看到你想睡好一點");
+    expect(acceptVariation("私訊給你囉 💌", "已經私訊你了。💌")).toBe("已經私訊你了 💌");
+  });
+});
