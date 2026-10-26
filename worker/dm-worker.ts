@@ -2,6 +2,7 @@ import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
+import { pruneAiCache } from "@/lib/ai/service";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -42,6 +43,10 @@ async function poll() {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[DM Worker] Comment reconciliation failed:", message);
   }
+  // Housekeeping for the AI result cache; cheap, and independent of the sweep
+  // above so a reconciliation error never stops it.
+  const pruned = await pruneAiCache();
+  if (pruned > 0) console.log(`[DM Worker] Pruned ${pruned} old AI cache rows`);
 }
 
 // Kick off one sweep shortly after boot, then on a fixed interval.

@@ -3,6 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 // faq.ts imports the Prisma client and the Instagram provider at module load;
 // neither is exercised by the pure helpers under test here.
 vi.mock("@/lib/db/client", () => ({ prisma: {} }));
+vi.mock("@/lib/utils/rate-limiter", () => ({
+  reserveDMSlot: vi.fn().mockResolvedValue({ allowed: true, reserved: true }),
+  releaseDMSlot: vi.fn(),
+}));
 vi.mock("@/lib/instagram/provider", () => ({
   createInstagramContext: vi.fn(),
   hasInstagramCredentials: vi.fn(),

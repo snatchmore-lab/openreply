@@ -21,6 +21,7 @@ import {
 } from "@/lib/instagram/provider";
 import { completeJson } from "./service";
 import { normalizeTone } from "./opening";
+import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
 import {
   buildFaqContextBlock,
   buildFaqUserPrompt,
@@ -135,6 +136,43 @@ export async function handleHumanEcho(input: {
   return "taken-over";
 }
 
+/**
+ * A person replied from the OpenReply dashboard inbox. That send goes through
+ * our own send layer, so the echo looks like ours and handleHumanEcho would
+ * not fire; mark the takeover explicitly instead. No-op when the bot has
+ * never touched the thread.
+ */
+export async function recordDashboardReply(input: {
+  instagramAccountRecordId: string;
+  recipientId: string;
+  text: string;
+}): Promise<void> {
+  const conversation = await prisma.conversation.findUnique({
+    where: {
+      instagramAccountId_senderId: {
+        instagramAccountId: input.instagramAccountRecordId,
+        senderId: input.recipientId,
+      },
+    },
+    select: { id: true, status: true },
+  });
+  if (!conversation) return;
+  await prisma.$transaction([
+    prisma.conversationMessage.create({
+      data: { conversationId: conversation.id, direction: "OUT_HUMAN", text: input.text },
+    }),
+    prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        lastMessageAt: new Date(),
+        ...(conversation.status === "HUMAN"
+          ? {}
+          : { status: "HUMAN", takenOverAt: new Date() }),
+      },
+    }),
+  ]);
+}
+
 export async function handleFaqMessage(input: {
   instagramAccountId: string; // IG user id (instagramId), as in the webhook
   senderId: string;
@@ -233,7 +271,7 @@ export async function handleFaqMessage(input: {
     }),
     schema: FaqOutput,
     cacheScope: [conversation.id],
-    maxTokens: 600,
+    maxTokens: 2000,
   });
 
   if (!result.ok) {
@@ -243,6 +281,12 @@ export async function handleFaqMessage(input: {
   }
 
   const decision = decideFaqReply(result.result, settings);
+
+  // Share the per-account hourly DM budget with campaign sends so the bot can
+  // never push the account over Instagram's cap. No slot → stay silent now;
+  // the person can ask again later.
+  const slot = await reserveDMSlot(account.instagramId);
+  if (!slot.allowed) return { kind: "silent", reason: "hourly-limit" };
 
   let context;
   try {
@@ -254,6 +298,7 @@ export async function handleFaqMessage(input: {
       message: decision.text,
     });
   } catch (error) {
+    if (slot.reserved) await releaseDMSlot(account.instagramId).catch(() => {});
     console.error(
       "[FAQ bot] Failed to send reply:",
       error instanceof Error ? error.message : error

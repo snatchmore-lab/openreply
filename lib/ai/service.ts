@@ -80,6 +80,21 @@ export function __setAiClientForTests(fake: Anthropic | null) {
   client = fake;
 }
 
+/**
+ * Drop cached verdicts older than `days`. Called from the worker's periodic
+ * sweep so the AiCache table cannot grow without bound; a pruned entry just
+ * means one more model call if the same text ever comes back.
+ */
+export async function pruneAiCache(days = 30): Promise<number> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  try {
+    const result = await prisma.aiCache.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    return result.count;
+  } catch {
+    return 0;
+  }
+}
+
 export function buildCacheKey(parts: string[]): string {
   return createHash("sha256").update(parts.join("\u0000")).digest("hex");
 }
@@ -160,7 +175,7 @@ export async function completeJson<T>(
 
     const response = await getClient().messages.parse({
       model,
-      max_tokens: options.maxTokens ?? 512,
+      max_tokens: options.maxTokens ?? 1024,
       // Classification-sized calls: lowest effort keeps latency and cost down.
       output_config: { effort: "low", format: zodOutputFormat(options.schema) },
       system: [
@@ -212,6 +227,19 @@ export async function completeJson<T>(
     // All of them mean "fall back to the non-AI behaviour", never "crash the
     // job", so the DM pipeline keeps running without AI.
     if (error instanceof Anthropic.AuthenticationError) {
+      // A rejected key silently turns every AI feature off. Make it visible on
+      // the Diagnostics page instead of only in worker logs.
+      await prisma.operationalEvent
+        .create({
+          data: {
+            workspaceId: options.workspaceId,
+            source: "WORKER",
+            level: "ERROR",
+            message: "AI_API_KEY was rejected by the AI provider; AI features are falling back to non-AI behaviour",
+            payload: { feature: options.feature },
+          },
+        })
+        .catch(() => {});
       return { ok: false, reason: "error", detail: "invalid AI_API_KEY" };
     }
     if (error instanceof Anthropic.RateLimitError) {

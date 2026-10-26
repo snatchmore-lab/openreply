@@ -66,7 +66,7 @@ export async function varyPublicReply(
     // retry of the same job reuses its rewrite instead of paying again, while
     // different comments get different wording.
     cacheScope: [campaign.id, commentId],
-    maxTokens: 400,
+    maxTokens: 1024,
   });
 
   if (!outcome.ok) return null;

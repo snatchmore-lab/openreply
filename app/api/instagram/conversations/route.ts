@@ -7,6 +7,7 @@ import {
   MetaApiError,
 } from "@/lib/instagram/provider";
 import { createInstagramContext } from "@/lib/instagram/provider";
+import { recordDashboardReply } from "@/lib/ai/faq";
 
 export interface ConversationListItem {
   id: string;
@@ -150,6 +151,13 @@ export async function POST(request: NextRequest) {
       userId: body.recipientId,
       message: text,
     });
+    // A human answered from the dashboard: the FAQ bot must step back from
+    // this thread, same as when the owner replies in the Instagram app.
+    await recordDashboardReply({
+      instagramAccountRecordId: account.id,
+      recipientId: body.recipientId,
+      text,
+    }).catch(() => {});
     return NextResponse.json({ success: true, data: result });
   } catch (err) {
     console.error("[Conversations] Send error:", err);

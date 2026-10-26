@@ -77,7 +77,7 @@ export async function aiMatch(
     // The threshold is applied after the call, so it is deliberately NOT part
     // of the cache key: changing it in the UI reuses existing verdicts.
     cacheScope: [],
-    maxTokens: 256,
+    maxTokens: 1024,
   });
 
   if (!outcome.ok) {

@@ -90,7 +90,7 @@ export async function generateOpening(
     }),
     schema: OpeningOutput,
     cacheScope: [campaign.id],
-    maxTokens: 300,
+    maxTokens: 1024,
   });
 
   if (!outcome.ok) return null;
