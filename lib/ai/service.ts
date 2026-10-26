@@ -144,10 +144,13 @@ export async function completeJson<T>(
     }
   }
 
-  const allowed = await reserveDailyCall(options.workspaceId, options.feature);
-  if (!allowed) return { ok: false, reason: "limit" };
-
   try {
+    // Inside the try on purpose: a database hiccup here (or a migration that
+    // has not been applied yet) must degrade to "no AI this time", not crash
+    // the DM job that asked.
+    const allowed = await reserveDailyCall(options.workspaceId, options.feature);
+    if (!allowed) return { ok: false, reason: "limit" };
+
     const response = await getClient().messages.parse({
       model,
       max_tokens: options.maxTokens ?? 512,
