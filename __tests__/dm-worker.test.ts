@@ -100,6 +100,7 @@ vi.mock("@/lib/utils/keyword-matcher", () => ({
 vi.mock("@/lib/utils/rate-limiter", () => ({
   reserveDMSlot: mockReserveDMSlot,
   releaseDMSlot: mockReleaseDMSlot,
+  reservePublicReplySlot: async () => true,
 }));
 
 vi.mock("@/lib/billing/usage", () => ({

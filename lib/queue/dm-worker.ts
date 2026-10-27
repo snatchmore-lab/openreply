@@ -44,7 +44,7 @@ import { composeDmWithOpening, generateOpening } from "@/lib/ai/opening";
 import { handleFaqMessage } from "@/lib/ai/faq";
 import { varyPublicReply } from "@/lib/ai/vary";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
+import { reserveDMSlot, releaseDMSlot, reservePublicReplySlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
   reserveWorkspaceDMSend,
@@ -61,6 +61,9 @@ import { hashRecipientId } from "@/lib/tracking/server";
 import { ZernioApiError } from "@/lib/zernio/client";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
+
+/** Thrown inside the public-reply leg when the hourly public cap is reached. */
+class PublicReplySkipped extends Error {}
 
 // How long to wait before re-checking a follow that came back false: one
 // delay per re-check, each counted from the previous check.
@@ -583,6 +586,17 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       await claimCommentDelivery(automation.id, commentId, "public")
     ) {
       try {
+        if (!(await reservePublicReplySlot(instagramAccountId))) {
+          // Hourly public-reply cap reached: skip the public reply for good
+          // (the DM below still goes out). Recorded so the log shows why.
+          await prisma.dmLog
+            .update({
+              where: { automationId_commentId: { automationId: automation.id, commentId } },
+              data: { publicReplyError: "Skipped: hourly public reply limit reached" },
+            })
+            .catch(() => {});
+          throw new PublicReplySkipped();
+        }
         const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
         // Feature 4: optional AI rewording of the picked template. Null (AI
         // off, cap, provider error, rewrite rejected) posts the template.
@@ -607,21 +621,24 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           data: { publicReplySentAt: new Date(), publicReplyError: null, publicReplyDeliveryUnconfirmed: false },
         });
       } catch (error) {
-        console.error(
-          "[DM Worker] Public comment reply failed:",
-          formatError(error)
-        );
-        await prisma.dmLog
-          .update({
-            where: {
-              automationId_commentId: {
-                automationId: automation.id,
-                commentId,
+        // A capped reply is on purpose and already logged; not a failure.
+        if (!(error instanceof PublicReplySkipped)) {
+          console.error(
+            "[DM Worker] Public comment reply failed:",
+            formatError(error)
+          );
+          await prisma.dmLog
+            .update({
+              where: {
+                automationId_commentId: {
+                  automationId: automation.id,
+                  commentId,
+                },
               },
-            },
-            data: { publicReplyError: formatError(classifySendError(error)), publicReplyDeliveryUnconfirmed: !isConfirmedSendRejection(error) },
-          })
-          .catch(() => {});
+              data: { publicReplyError: formatError(classifySendError(error)), publicReplyDeliveryUnconfirmed: !isConfirmedSendRejection(error) },
+            })
+            .catch(() => {});
+        }
       }
     }
 

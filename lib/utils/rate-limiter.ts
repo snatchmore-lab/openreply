@@ -16,10 +16,24 @@
 
 import Redis from "ioredis";
 
-const RATE_LIMIT_MAX = 750; // private replies per hour, per Meta's documented cap
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+// Meta allows 750 private replies per hour, but running at the ceiling is what
+// gets accounts flagged. The default sits well below it; DMs over the cap are
+// delayed, not dropped.
+const RATE_LIMIT_MAX = envInt("DM_HOURLY_LIMIT", 200, 1, 750);
 const RATE_LIMIT_WINDOW = 3600; // 1 hour in seconds
 const REQUEUE_DELAY_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_REQUEUE_ATTEMPTS = 3;
+// 12 × 30 min = 6 hours of retries, so a burst drains instead of being skipped.
+const MAX_REQUEUE_ATTEMPTS = 12;
+
+// Public comment replies are visible, repetitive and the likeliest spam
+// signal, so they get their own, tighter cap. Over it, the comment still gets
+// its DM; only the public reply is left out.
+const PUBLIC_REPLY_HOURLY_LIMIT = envInt("PUBLIC_REPLY_HOURLY_LIMIT", 30, 0, 750);
 
 let redis: Redis | null = null;
 
@@ -217,6 +231,27 @@ export async function releaseDMSlot(
 }
 
 /**
+ * Take one public-reply slot for this hour. False when the account is at its
+ * hourly public-reply cap, or when Redis cannot be reached: a public reply is
+ * optional, so when in doubt it is skipped rather than risked.
+ */
+export async function reservePublicReplySlot(instagramAccountId: string): Promise<boolean> {
+  if (PUBLIC_REPLY_HOURLY_LIMIT <= 0) return false;
+  try {
+    const result = await getRedis().eval(
+      RESERVE_DM_SLOT_SCRIPT,
+      1,
+      `rate:public:${instagramAccountId}`,
+      PUBLIC_REPLY_HOURLY_LIMIT,
+      RATE_LIMIT_WINDOW
+    );
+    return toScriptNumber(Array.isArray(result) ? result[0] : 0) === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Backwards-compatible helper for tests and admin scripts.
  * Prefer reserveDMSlot in workers.
  */
@@ -251,4 +286,10 @@ export async function resetRateLimit(
 }
 
 // Export constants for use in tests
-export { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, REQUEUE_DELAY_MS, MAX_REQUEUE_ATTEMPTS };
+export {
+  RATE_LIMIT_MAX,
+  RATE_LIMIT_WINDOW,
+  REQUEUE_DELAY_MS,
+  MAX_REQUEUE_ATTEMPTS,
+  PUBLIC_REPLY_HOURLY_LIMIT,
+};

@@ -35,6 +35,9 @@ import {
   reserveDMSlot,
   releaseDMSlot,
   RATE_LIMIT_MAX,
+  MAX_REQUEUE_ATTEMPTS,
+  PUBLIC_REPLY_HOURLY_LIMIT,
+  reservePublicReplySlot,
 } from "../lib/utils/rate-limiter";
 
 beforeEach(() => {
@@ -78,7 +81,7 @@ describe("checkRateLimit", () => {
   it("should skip after max requeue attempts", async () => {
     mockGet.mockResolvedValue(String(RATE_LIMIT_MAX));
 
-    const result = await checkRateLimit("account_123", 3);
+    const result = await checkRateLimit("account_123", MAX_REQUEUE_ATTEMPTS);
 
     expect(result.allowed).toBe(false);
     expect(result.shouldRequeue).toBe(false);
@@ -119,7 +122,7 @@ describe("reserveDMSlot", () => {
   it("should skip after max requeue attempts", async () => {
     mockEval.mockResolvedValue(["0", String(RATE_LIMIT_MAX), "0"]);
 
-    const result = await reserveDMSlot("account_123", 3);
+    const result = await reserveDMSlot("account_123", MAX_REQUEUE_ATTEMPTS);
 
     expect(result.allowed).toBe(false);
     expect(result.shouldRequeue).toBe(false);
@@ -155,5 +158,34 @@ describe("releaseDMSlot", () => {
 
     expect(count).toBe(0);
     expect(mockDel).toHaveBeenCalledWith("rate:dm:account_123");
+  });
+});
+
+describe("reservePublicReplySlot", () => {
+  it("defaults to a tight hourly cap, well under Meta's DM ceiling", () => {
+    expect(PUBLIC_REPLY_HOURLY_LIMIT).toBe(30);
+    expect(RATE_LIMIT_MAX).toBe(200);
+  });
+
+  it("allows a public reply while under the cap", async () => {
+    mockEval.mockResolvedValue([1, 5, 25]);
+    expect(await reservePublicReplySlot("account_123")).toBe(true);
+    expect(mockEval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      "rate:public:account_123",
+      PUBLIC_REPLY_HOURLY_LIMIT,
+      3600
+    );
+  });
+
+  it("refuses once the cap is reached", async () => {
+    mockEval.mockResolvedValue([0, 30, 0]);
+    expect(await reservePublicReplySlot("account_123")).toBe(false);
+  });
+
+  it("skips the public reply when Redis is unreachable", async () => {
+    mockEval.mockRejectedValue(new Error("down"));
+    expect(await reservePublicReplySlot("account_123")).toBe(false);
   });
 });
