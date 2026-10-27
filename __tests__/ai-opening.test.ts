@@ -137,7 +137,7 @@ describe("formatAiText", () => {
   it("puts each phrase on its own line, never more than 10 characters wide", async () => {
     const { formatAiText, displayWidth } = await import("@/lib/ai/text");
     const out = formatAiText("謝謝你的留言，睡不好真的很辛苦，這份日記可以幫你看見問題在哪裡 🌙");
-    expect(out).toBe("謝謝你的留言\n睡不好真的很辛苦\n這份日記可以幫你看見\n問題在哪裡 🌙");
+    expect(out).toBe("謝謝你的留言\n睡不好真的很辛苦\n這份日記可以幫你\n看見問題在哪裡 🌙");
     for (const line of out.split("\n")) {
       expect(displayWidth(line.replace(/ 🌙$/u, ""))).toBeLessThanOrEqual(10);
     }
@@ -153,6 +153,13 @@ describe("formatAiText", () => {
     expect(displayWidth("PDF")).toBe(1.5);
     expect(displayWidth("睡眠")).toBe(2);
     expect(formatAiText("這份PDF日記超實用")).toBe("這份PDF日記超實用");
+  });
+
+  it("breaks between words and around brackets, not inside them", async () => {
+    const { formatAiText } = await import("@/lib/ai/text");
+    expect(formatAiText("先看私訊裡的「訊息請求」資料夾看看")).toBe("先看私訊裡的\n「訊息請求」\n資料夾看看");
+    expect(formatAiText("幫你看出自己卡在哪一關")).toBe("幫你看出自己\n卡在哪一關");
+    expect(formatAiText("或點 bio 上的連結就能做 😊")).toBe("或點 bio 上的連結\n就能做 😊");
   });
 
   it("keeps a URL whole on its own line", async () => {

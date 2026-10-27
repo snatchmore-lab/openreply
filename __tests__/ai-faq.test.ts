@@ -57,7 +57,7 @@ describe("decideFaqReply", () => {
       { answer: "「檔案會在留言後 5 分鐘內私訊給你」", confident: true },
       settings
     );
-    expect(out).toEqual({ kind: "answered", text: "檔案會在留言後 5\n分鐘內私訊給你" });
+    expect(out).toEqual({ kind: "answered", text: "檔案會在留言後\n5 分鐘內私訊給你" });
   });
 
   it("caps the answer length", () => {

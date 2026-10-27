@@ -58,8 +58,8 @@ function units(line: string): string[] {
   return out;
 }
 
-const SOFT_BREAK = /^[，、,：:；;\s]$/;
-const DROP_AT_BREAK = /^[，,\s]$/;
+const SOFT_BREAK = /^[，,；;]$/;
+const DROP_AT_BREAK = /^[，,]$/;
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 const isHanger = (unit: string) => /^\s$/.test(unit) || EMOJI.test(unit);
@@ -69,50 +69,113 @@ function textWidth(line: string): number {
   return displayWidth(line.replace(/[\s\p{Extended_Pictographic}‍️]+$/u, ""));
 }
 
+/** Characters that must never start a line (they belong to the line before). */
+const NO_LINE_START = /^[，、。,.：:；;！!？?」』）)》〉】…～~]$/;
+
+const widthOf = (us: string[]) => displayWidth(us.join(""));
+
+// Good places to end a line: after a sentence particle or a closing bracket.
+const BREAK_AFTER = /^[喔唷呢吧嗎啊呀耶囉啦哦後》」』）)]$/;
+// Good places to start a line: before an opening bracket or a function word.
+const BREAK_BEFORE = /^[《「『（(可就或和跟再也都讓把被從給用先還只由]$/;
+// Characters that read badly at the start of a line (they end a word).
+const WEAK_LINE_START = /^[的了著過們己見]$/;
+
+/** True when a break before index `i` would fall inside 「…」, 《…》 or （…）. */
+function insideBrackets(us: string[], i: number): boolean {
+  let depth = 0;
+  for (let k = 0; k < i; k += 1) {
+    if (/^[《「『（(]$/.test(us[k])) depth += 1;
+    else if (/^[》」』）)]$/.test(us[k])) depth = Math.max(0, depth - 1);
+  }
+  return depth > 0;
+}
+
 /**
- * Break one line into lines no wider than `max`, preferring commas and spaces.
- * A closing emoji stays on the last line instead of sitting alone.
+ * Split a phrase that is too long into lines no wider than `max`, aiming for
+ * even lengths (12 characters → 6 + 6, not 10 + a stranded 2) and preferring
+ * to break after particles or brackets rather than inside a word.
+ */
+function splitBalanced(us: string[], max: number): string[][] {
+  const chunks: string[][] = [];
+  let rest = us;
+  while (widthOf(rest) > max) {
+    const total = widthOf(rest);
+    const target = total / Math.ceil(total / max);
+    let best = -1;
+    let bestScore = -Infinity;
+    let width = 0;
+    for (let i = 1; i < rest.length; i += 1) {
+      width += displayWidth(rest[i - 1]);
+      if (width > max) break;
+      if (width < 2 || NO_LINE_START.test(rest[i])) continue;
+      let score = -Math.abs(width - target);
+      if (BREAK_AFTER.test(rest[i - 1])) score += 2.5;
+      if (BREAK_BEFORE.test(rest[i])) score += 2;
+      // Never split a bracketed name like 「訊息請求」 when it can be avoided.
+      if (/^[《「『（(]$/.test(rest[i]) || /^[》」』）)]$/.test(rest[i - 1])) score += 1.5;
+      if (insideBrackets(rest, i)) score -= 2;
+      if (WEAK_LINE_START.test(rest[i])) score -= 1.5;
+      if (widthOf(rest.slice(i)) < 2) score -= 5; // no stranded tail
+      // On a tie, take the later break: it keeps more of the phrase together.
+      if (score >= bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    if (best < 0) best = 1; // a single unit wider than a line (a long URL)
+    chunks.push(rest.slice(0, best));
+    rest = rest.slice(best);
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
+}
+
+/**
+ * Break one line into lines no wider than `max`. Every comma starts a new
+ * line (house style: one phrase per line); a phrase longer than `max` is
+ * split evenly. Spaces are not break points, so "點 bio 連結" stays together.
+ * A closing emoji stays on the last line.
  */
 function wrapLine(line: string, max: number): string[] {
   if (textWidth(line) <= max) return [line];
-  const lines: string[] = [];
-  let current: string[] = [];
-  let width = 0;
-  const flush = () => {
-    const text = current.join("").trim();
-    if (text) lines.push(text);
-    current = [];
-    width = 0;
-  };
+
   const all = units(line);
-  for (let u = 0; u < all.length; u += 1) {
-    const unit = all[u];
-    const w = displayWidth(unit);
-    const closing = all.slice(u).every(isHanger);
-    if (width + w > max && current.length > 0 && !closing) {
-      // Prefer the last comma/space in the second half of the line.
-      let cut = -1;
-      let acc = 0;
-      for (let i = 0; i < current.length; i += 1) {
-        acc += displayWidth(current[i]);
-        if (SOFT_BREAK.test(current[i]) && acc >= max / 2) cut = i;
-      }
-      if (cut >= 0) {
-        const rest = current.slice(cut + 1);
-        current = DROP_AT_BREAK.test(current[cut]) ? current.slice(0, cut) : current.slice(0, cut + 1);
-        flush();
-        current = rest;
-        width = displayWidth(rest.join(""));
-        while (current.length > 0 && /^\s$/.test(current[0])) current.shift();
+  // Peel off a closing emoji (and spaces) so it can hang on the last line.
+  let end = all.length;
+  while (end > 0 && isHanger(all[end - 1])) end -= 1;
+  const tail = all.slice(end).join("").trim();
+
+  // Phrases, each with the separator that followed it ("，" or " " or "").
+  const phrases: { us: string[]; sep: string }[] = [];
+  let cur: string[] = [];
+  for (const unit of all.slice(0, end)) {
+    if (SOFT_BREAK.test(unit)) {
+      if (DROP_AT_BREAK.test(unit)) {
+        if (cur.length > 0) phrases.push({ us: cur, sep: unit });
       } else {
-        flush();
+        cur.push(unit); // 、：； stay with their phrase
+        phrases.push({ us: cur, sep: "" });
       }
+      cur = [];
+    } else {
+      cur.push(unit);
     }
-    if (current.length === 0 && /^\s$/.test(unit)) continue;
-    current.push(unit);
-    width += w;
   }
-  flush();
+  if (cur.length > 0) phrases.push({ us: cur, sep: "" });
+
+  const lines: string[] = [];
+  for (const { us } of phrases) {
+    for (const chunk of splitBalanced(us, max)) {
+      const text = chunk.join("").trim();
+      if (text) lines.push(text);
+    }
+  }
+
+  if (tail) {
+    if (lines.length === 0) lines.push(tail);
+    else lines[lines.length - 1] = `${lines[lines.length - 1]} ${tail}`;
+  }
   return lines;
 }
 
