@@ -12,6 +12,7 @@ interface AiSettingsData {
   tone: string;
   maxReplyChars: number;
   notifyEmail: string | null;
+  answerAfterHandoff?: boolean;
   scope: "workspace" | "account";
   inherited: boolean;
 }
@@ -117,6 +118,7 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
           tone: data.tone === "professional" ? "professional" : "friendly",
           maxReplyChars: data.maxReplyChars,
           notifyEmail: data.notifyEmail?.trim() ?? "",
+          answerAfterHandoff: Boolean(data.answerAfterHandoff),
         }),
       });
       const json = await res.json().catch(() => null);
@@ -230,12 +232,13 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
 
           <div className="space-y-1">
             <label className="text-sm font-medium text-foreground">{t("Handoff message")}</label>
-            <input
+            <textarea
               value={data.handoffMessage}
               disabled={disabled}
               onChange={(e) => setData({ ...data, handoffMessage: e.target.value })}
               maxLength={500}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
             />
             <p className="text-xs text-muted">
               {t(
@@ -243,6 +246,22 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
               )}
             </p>
           </div>
+
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <span className="space-y-0.5">
+              <span className="block text-sm text-foreground">{t("Keep answering after a handoff")}</span>
+              <span className="block text-xs text-muted">
+                {t("After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.")}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={Boolean(data.answerAfterHandoff)}
+              disabled={disabled}
+              onChange={(e) => setData({ ...data, answerAfterHandoff: e.target.checked })}
+              className="h-4 w-4 shrink-0 accent-accent"
+            />
+          </label>
 
           <div className="space-y-1">
             <label className="text-sm font-medium text-foreground">{t("Email me when a human is needed")}</label>

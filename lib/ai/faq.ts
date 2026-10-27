@@ -54,6 +54,7 @@ export interface FaqSettings {
   tone: string;
   maxReplyChars: number;
   notifyEmail?: string | null;
+  answerAfterHandoff?: boolean;
 }
 
 /**
@@ -276,7 +277,12 @@ export async function handleFaqMessage(input: {
     },
   });
 
-  if (conversation.status !== "AI") {
+  // HUMAN (the owner replied) always silences the bot. NEEDS_HUMAN does too,
+  // unless the account opted in to keep answering what the knowledge base
+  // covers while the owner has not replied yet.
+  const afterHandoff =
+    conversation.status === "NEEDS_HUMAN" && Boolean(settings.answerAfterHandoff);
+  if (conversation.status !== "AI" && !afterHandoff) {
     return { kind: "silent", reason: "not-ai-state" };
   }
 
@@ -333,6 +339,12 @@ export async function handleFaqMessage(input: {
 
   const decision = decideFaqReply(result.result, settings);
 
+  // Already handed off: never repeat the handoff line or its email. Only a
+  // real answer (or a crisis reply) goes out.
+  if (afterHandoff && decision.kind === "handoff") {
+    return { kind: "silent", reason: "not-ai-state" };
+  }
+
   // Share the per-account hourly DM budget with campaign sends so the bot can
   // never push the account over Instagram's cap. No slot → stay silent now;
   // the person can ask again later.
@@ -379,7 +391,9 @@ export async function handleFaqMessage(input: {
       data: {
         lastMessageAt: new Date(),
         aiReplyCount: { increment: 1 },
-        ...(needsHuman ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() } : {}),
+        ...(needsHuman && !afterHandoff
+          ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() }
+          : {}),
       },
     }),
   ]);

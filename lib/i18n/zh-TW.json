@@ -527,5 +527,7 @@
   "If they still don't follow (optional)": "確認後仍未追蹤時回這句（選填）",
   "Not following yet. Follow, then tap the button again 😊": "還沒收到你的追蹤唷\n追蹤完再按一次 😊",
   "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "仍未追蹤時，附上同一個按鈕送出這句。留空就重送上面的追蹤提示。",
-  "Safety reply + urgent email": "安全回覆＋緊急通知"
+  "Safety reply + urgent email": "安全回覆＋緊急通知",
+  "Keep answering after a handoff": "轉交後繼續回答",
+  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "轉交給你之後，對方再問知識庫答得出來的問題，機器人照樣回答，直到你本人回覆為止。不會重複發轉交訊息。"
 }

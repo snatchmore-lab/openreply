@@ -527,5 +527,7 @@
   "If they still don't follow (optional)": "Se ainda não seguir (opcional)",
   "Not following yet. Follow, then tap the button again 😊": "Ainda não vi seu follow. Siga e toque no botão de novo 😊",
   "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "Enviada com o mesmo botão quando o follow ainda não aparece. Deixe vazio para reenviar a mensagem acima.",
-  "Safety reply + urgent email": "Resposta de segurança + e-mail urgente"
+  "Safety reply + urgent email": "Resposta de segurança + e-mail urgente",
+  "Keep answering after a handoff": "Continuar respondendo após transferir",
+  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "Depois de transferir, o bot ainda responde perguntas cobertas pela base de conhecimento, até você responder pessoalmente. Ele nunca repete a mensagem de transferência."
 }

@@ -1,0 +1,116 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const { mockPrisma, mockSend, mockComplete, mockEmail } = vi.hoisted(() => ({
+  mockPrisma: {
+    instagramAccount: { findUnique: vi.fn() },
+    conversation: { upsert: vi.fn(), update: vi.fn() },
+    conversationMessage: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      count: vi.fn(),
+      findMany: vi.fn(),
+    },
+    $transaction: vi.fn(),
+  },
+  mockSend: vi.fn(),
+  mockComplete: vi.fn(),
+  mockEmail: vi.fn(),
+}));
+
+vi.mock("@/lib/db/client", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/instagram/provider", () => ({
+  createInstagramContext: vi.fn().mockResolvedValue({}),
+  hasInstagramCredentials: vi.fn().mockReturnValue(true),
+  sendDirectMessage: mockSend,
+}));
+vi.mock("@/lib/utils/rate-limiter", () => ({
+  reserveDMSlot: vi.fn().mockResolvedValue({ allowed: true, reserved: true }),
+  releaseDMSlot: vi.fn(),
+}));
+vi.mock("@/lib/ai/service", () => ({ completeJson: mockComplete }));
+vi.mock("@/lib/notify/email", () => ({
+  isValidEmail: (v: unknown) => typeof v === "string" && v.includes("@"),
+  sendThrottledNotifyEmail: mockEmail,
+}));
+
+import { handleFaqMessage } from "@/lib/ai/faq";
+
+function setup(status: "AI" | "NEEDS_HUMAN" | "HUMAN", answerAfterHandoff: boolean) {
+  mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+    id: "acc",
+    instagramId: "ig",
+    username: "rban.case",
+    workspaceId: "ws",
+    aiSettings: {
+      faqEnabled: true,
+      knowledgeBase: "能力盤點免費",
+      handoffMessage: "轉給本人",
+      hourlyLimitPerUser: 8,
+      tone: "friendly",
+      maxReplyChars: 300,
+      notifyEmail: "me@example.com",
+      answerAfterHandoff,
+    },
+    workspace: { aiSettings: null },
+  });
+  mockPrisma.conversationMessage.findUnique.mockResolvedValue(null);
+  mockPrisma.conversation.upsert.mockResolvedValue({ id: "conv", status });
+  mockPrisma.conversationMessage.create.mockResolvedValue({});
+  mockPrisma.conversationMessage.count.mockResolvedValue(0);
+  mockPrisma.conversationMessage.findMany.mockResolvedValue([]);
+  mockPrisma.$transaction.mockResolvedValue([]);
+  mockEmail.mockResolvedValue(undefined);
+  mockSend.mockResolvedValue({});
+}
+
+const answer = (text: string) => ({
+  ok: true,
+  cached: false,
+  model: "m",
+  result: { answer: text, confident: true, crisis: false },
+});
+const unsure = { ok: true, cached: false, model: "m", result: { answer: "", confident: false, crisis: false } };
+const msg = { instagramAccountId: "ig", senderId: "fan", messageId: "mid", messageText: "能力盤點要錢嗎" };
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("answer after handoff", () => {
+  it("answers a knowledge-base question in a handed-off thread when enabled", async () => {
+    setup("NEEDS_HUMAN", true);
+    mockComplete.mockResolvedValue(answer("能力盤點免費喔"));
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toMatchObject({ kind: "answered" });
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "能力盤點免費喔" }));
+  });
+
+  it("never repeats the handoff message or email in a handed-off thread", async () => {
+    setup("NEEDS_HUMAN", true);
+    mockComplete.mockResolvedValue(unsure);
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toEqual({ kind: "silent", reason: "not-ai-state" });
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockEmail).not.toHaveBeenCalled();
+  });
+
+  it("stays silent after a handoff when the setting is off", async () => {
+    setup("NEEDS_HUMAN", false);
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toEqual({ kind: "silent", reason: "not-ai-state" });
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("always stays silent once the owner has replied", async () => {
+    setup("HUMAN", true);
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toEqual({ kind: "silent", reason: "not-ai-state" });
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+});
