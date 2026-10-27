@@ -162,6 +162,11 @@ describe("formatAiText", () => {
     expect(formatAiText("或點 bio 上的連結就能做 😊")).toBe("或點 bio 上的連結\n就能做 😊");
     expect(formatAiText("沒看到的話翻一下垃圾信件匣")).toBe("沒看到的話\n翻一下垃圾信件匣");
     expect(formatAiText("C 我都知道，\n就是一直動不了")).toBe("C 我都知道\n就是一直動不了");
+    // Never inside a word, in either script.
+    for (const out of [formatAiText("可以先做7題免費的能力盤點"), formatAiText("可以先做7题免费的能力盘点")]) {
+      expect(out).not.toMatch(/免\n[費费]/);
+      expect(out).not.toMatch(/能\n力/);
+    }
   });
 
   it("keeps a URL whole on its own line", async () => {

@@ -40,10 +40,32 @@ export function stripFullStops(text: string): string {
 const HAN = /\p{Script=Han}/u;
 const ASCII = /^[\x21-\x7e]$/;
 
-/** Split into units that must stay together: ASCII words, emoji sequences, single characters. */
+// ICU's dictionary-based word breaker: knows that 免費, 能力, 一下 are words,
+// so a line never splits inside one. Absent on runtimes without full ICU.
+const WORDS =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter("zh", { granularity: "word" })
+    : null;
+
+/**
+ * Split into units that must stay together: Chinese words (2–4 characters),
+ * ASCII words, emoji sequences, and single characters for everything else.
+ */
 function units(line: string): string[] {
   const out: string[] = [];
-  for (const ch of line) {
+  const pieces = WORDS ? Array.from(WORDS.segment(line), (s) => s.segment) : [line];
+  for (const piece of pieces) {
+    if (/^\p{Script=Han}{2,4}$/u.test(piece)) {
+      out.push(piece);
+      continue;
+    }
+    pushChars(out, piece);
+  }
+  return out;
+}
+
+function pushChars(out: string[], text: string): void {
+  for (const ch of text) {
     const prev = out[out.length - 1];
     if (prev !== undefined && ASCII.test(ch) && /[\x21-\x7e]$/.test(prev)) {
       out[out.length - 1] = prev + ch;
@@ -55,7 +77,6 @@ function units(line: string): string[] {
       out.push(ch);
     }
   }
-  return out;
 }
 
 const SOFT_BREAK = /^[，,；;]$/;
