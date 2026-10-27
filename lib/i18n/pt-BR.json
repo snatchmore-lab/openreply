@@ -526,5 +526,6 @@
   "Instagram can take up to a minute to show a new follow. This line is sent right after the tap so the chat isn't silent. Leave empty to send nothing.": "O Instagram pode levar até um minuto para mostrar um novo follow. Esta frase é enviada logo após o toque para o chat não ficar em silêncio. Deixe vazio para não enviar nada.",
   "If they still don't follow (optional)": "Se ainda não seguir (opcional)",
   "Not following yet. Follow, then tap the button again 😊": "Ainda não vi seu follow. Siga e toque no botão de novo 😊",
-  "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "Enviada com o mesmo botão quando o follow ainda não aparece. Deixe vazio para reenviar a mensagem acima."
+  "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "Enviada com o mesmo botão quando o follow ainda não aparece. Deixe vazio para reenviar a mensagem acima.",
+  "Safety reply + urgent email": "Resposta de segurança + e-mail urgente"
 }

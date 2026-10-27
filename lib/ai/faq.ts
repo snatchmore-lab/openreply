@@ -34,9 +34,16 @@ import {
 export const DEFAULT_HANDOFF_MESSAGE = "這個問題我幫你轉給本人回覆，請稍等一下 🙏";
 export const HISTORY_TURNS = 6;
 
+/**
+ * Sent instead of any answer when the person mentions suicide or self-harm.
+ * Fixed text, never written by the model: Taiwan's 24-hour 安心專線.
+ */
+export const CRISIS_MESSAGE = "如果你現在很難受\n可以撥 1925 安心專線\n24 小時都有人接";
+
 const FaqOutput = z.object({
   answer: z.string().max(2000),
   confident: z.boolean(),
+  crisis: z.boolean(),
 });
 
 export interface FaqSettings {
@@ -59,7 +66,7 @@ export async function previewFaqAnswer(input: {
   question: string;
   settings: Pick<FaqSettings, "knowledgeBase" | "handoffMessage" | "tone" | "maxReplyChars">;
 }): Promise<
-  | { kind: "answered" | "handoff"; text: string }
+  | { kind: "answered" | "handoff" | "crisis"; text: string }
   | { kind: "unavailable"; detail?: string }
 > {
   if (!input.settings.knowledgeBase.trim()) {
@@ -88,6 +95,7 @@ export async function previewFaqAnswer(input: {
 export type FaqOutcome =
   | { kind: "answered"; text: string; cached: boolean }
   | { kind: "handoff"; text: string }
+  | { kind: "crisis"; text: string }
   | {
       kind: "silent";
       reason:
@@ -113,9 +121,14 @@ export function sanitizeAnswer(raw: string, maxChars: number): string | null {
  * Exposed for tests.
  */
 export function decideFaqReply(
-  output: { answer: string; confident: boolean } | null,
+  output: { answer: string; confident: boolean; crisis?: boolean } | null,
   settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars">
-): { kind: "answered"; text: string } | { kind: "handoff"; text: string } {
+):
+  | { kind: "answered"; text: string }
+  | { kind: "handoff"; text: string }
+  | { kind: "crisis"; text: string } {
+  // Safety first: a crisis never gets a knowledge-base answer.
+  if (output?.crisis) return { kind: "crisis", text: CRISIS_MESSAGE };
   const handoff = settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE;
   if (!output || !output.confident) return { kind: "handoff", text: handoff };
   const text = sanitizeAnswer(output.answer, settings.maxReplyChars);
@@ -344,9 +357,11 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "send-failed" };
   }
 
+  const needsHuman = decision.kind !== "answered";
   const aiMeta = {
     confident: decision.kind === "answered",
-    handoff: decision.kind === "handoff",
+    handoff: needsHuman,
+    crisis: decision.kind === "crisis",
     cached: result.cached,
     model: result.model,
   };
@@ -364,14 +379,30 @@ export async function handleFaqMessage(input: {
       data: {
         lastMessageAt: new Date(),
         aiReplyCount: { increment: 1 },
-        ...(decision.kind === "handoff"
-          ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() }
-          : {}),
+        ...(needsHuman ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() } : {}),
       },
     }),
   ]);
 
-  if (decision.kind === "handoff" && isValidEmail(settings.notifyEmail)) {
+  if (decision.kind === "crisis" && isValidEmail(settings.notifyEmail)) {
+    await sendThrottledNotifyEmail(`crisis-${conversation.id}`, 10 * 60, {
+      to: settings.notifyEmail,
+      subject: `【緊急】@${account.username} 有人在私訊提到想不開`,
+      text: [
+        `@${account.username} 收到一則可能涉及自我傷害的私訊。`,
+        `機器人已回覆 1925 安心專線，之後不會再自動回這個人：`,
+        `「${decision.text.replace(/\n/g, " ")}」`,
+        "",
+        "對方的訊息：",
+        input.messageText.slice(0, 500),
+        "",
+        "請盡快打開 Instagram App 親自關心對方。",
+        "如果對方有立即危險，請撥 110 或 119。",
+        "",
+        "（這封信由 OpenReply 自動寄出）",
+      ].join("\n"),
+    }).catch(() => {});
+  } else if (decision.kind === "handoff" && isValidEmail(settings.notifyEmail)) {
     // One email per handoff; the thread stays NEEDS_HUMAN afterwards, so this
     // fires again only if someone hands it back to the bot and it hands off
     // again. The throttle key guards against a retried job double-sending.
@@ -394,5 +425,5 @@ export async function handleFaqMessage(input: {
 
   return decision.kind === "answered"
     ? { kind: "answered", text: decision.text, cached: result.cached }
-    : { kind: "handoff", text: decision.text };
+    : { kind: decision.kind, text: decision.text };
 }

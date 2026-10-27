@@ -13,10 +13,26 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { decideFaqReply, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE } from "@/lib/ai/faq";
-import { buildFaqUserPrompt, buildFaqContextBlock } from "@/lib/ai/prompts";
+import { decideFaqReply, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
+
+describe("crisis replies", () => {
+  it("sends the fixed hotline message, never the model's text or the handoff", () => {
+    const out = decideFaqReply({ answer: "電子書 NT$490", confident: true, crisis: true }, settings);
+    expect(out).toEqual({ kind: "crisis", text: CRISIS_MESSAGE });
+    expect(CRISIS_MESSAGE).toContain("1925");
+  });
+
+  it("wins even when the model was not confident", () => {
+    expect(decideFaqReply({ answer: "", confident: false, crisis: true }, settings).kind).toBe("crisis");
+  });
+
+  it("is spelled out in the system prompt", () => {
+    expect(FAQ_SYSTEM_PROMPT).toContain("crisis=true");
+  });
+});
 
 describe("decideFaqReply", () => {
   it("sends the owner's handoff message when the model is not confident", () => {

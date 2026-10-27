@@ -341,10 +341,14 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
                   <span className="text-warning">{t("Preview failed. Check the server's AI settings and try again.")}</span>
                 ) : (
                   <>
-                    <span className={`mr-2 text-xs font-medium ${testResult.kind === "handoff" ? "text-warning" : "text-accent"}`}>
-                      {testResult.kind === "handoff" ? t("Hands off to you") : t("Answers")}
+                    <span className={`mr-2 text-xs font-medium ${testResult.kind === "crisis" ? "text-error" : testResult.kind === "handoff" ? "text-warning" : "text-accent"}`}>
+                      {testResult.kind === "crisis"
+                        ? t("Safety reply + urgent email")
+                        : testResult.kind === "handoff"
+                          ? t("Hands off to you")
+                          : t("Answers")}
                     </span>
-                    <span className="text-foreground">{testResult.text}</span>
+                    <span className="whitespace-pre-line text-foreground">{testResult.text}</span>
                   </>
                 )}
               </div>
