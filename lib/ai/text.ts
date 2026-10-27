@@ -75,11 +75,11 @@ const NO_LINE_START = /^[，、。,.：:；;！!？?」』）)》〉】…～~]$
 const widthOf = (us: string[]) => displayWidth(us.join(""));
 
 // Good places to end a line: after a sentence particle or a closing bracket.
-const BREAK_AFTER = /^[喔唷呢吧嗎啊呀耶囉啦哦後》」』）)]$/;
+const BREAK_AFTER = /^[喔唷呢吧嗎啊呀耶囉啦哦後話》」』）)]$/;
 // Good places to start a line: before an opening bracket or a function word.
 const BREAK_BEFORE = /^[《「『（(可就或和跟再也都讓把被從給用先還只由]$/;
 // Characters that read badly at the start of a line (they end a word).
-const WEAK_LINE_START = /^[的了著過們己見]$/;
+const WEAK_LINE_START = /^[的了著過們己見下]$/;
 
 /** True when a break before index `i` would fall inside 「…」, 《…》 or （…）. */
 function insideBrackets(us: string[], i: number): boolean {
@@ -207,6 +207,9 @@ export function formatAiText(text: string, max = MAX_LINE_WIDTH): string {
     .map((line) => line.replace(/[ \t]+/g, " ").trim())
     .filter(Boolean)
     .flatMap((line) => wrapLine(line, max))
+    // A comma left dangling at the end of a line reads as a typo.
+    .map((line) => line.replace(/[，,、]+$/, "").trim())
+    .filter(Boolean)
     .join("\n");
 }
 

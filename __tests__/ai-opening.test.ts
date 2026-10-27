@@ -160,6 +160,8 @@ describe("formatAiText", () => {
     expect(formatAiText("先看私訊裡的「訊息請求」資料夾看看")).toBe("先看私訊裡的\n「訊息請求」\n資料夾看看");
     expect(formatAiText("幫你看出自己卡在哪一關")).toBe("幫你看出自己\n卡在哪一關");
     expect(formatAiText("或點 bio 上的連結就能做 😊")).toBe("或點 bio 上的連結\n就能做 😊");
+    expect(formatAiText("沒看到的話翻一下垃圾信件匣")).toBe("沒看到的話\n翻一下垃圾信件匣");
+    expect(formatAiText("C 我都知道，\n就是一直動不了")).toBe("C 我都知道\n就是一直動不了");
   });
 
   it("keeps a URL whole on its own line", async () => {
