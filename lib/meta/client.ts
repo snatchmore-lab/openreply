@@ -840,3 +840,106 @@ export async function debugToken(inputToken: string, accessToken: string) {
   const response = await fetch(url.toString());
   return handleResponse(response);
 }
+
+// ─── Facebook Pages (Messenger) ────────────────────────────────────────────
+//
+// A Facebook Page is stored as an InstagramAccount row with provider
+// FACEBOOK_PAGE: instagramId holds the Page id and accessToken the (encrypted)
+// Page access token. Page tokens derived from a long-lived user token do not
+// expire, so tokenExpiresAt stays null and the refresh cron skips them.
+
+/** The Facebook app id. Defaults to the deployed Rban Reply app. */
+export function getFacebookAppId(): string {
+  return process.env.FACEBOOK_APP_ID || "1440737331340309";
+}
+
+export const FACEBOOK_PAGE_SCOPES = [
+  "pages_show_list",
+  "pages_messaging",
+  "pages_manage_metadata",
+  "pages_read_engagement",
+  "business_management",
+].join(",");
+
+export function getFacebookAuthorizationUrl(redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    client_id: getFacebookAppId(),
+    redirect_uri: redirectUri,
+    scope: FACEBOOK_PAGE_SCOPES,
+    response_type: "code",
+    state,
+  });
+  return `https://www.facebook.com/${getMetaGraphApiVersion()}/dialog/oauth?${params.toString()}`;
+}
+
+/** Code → short-lived user token → long-lived user token. */
+export async function exchangeFacebookCode(code: string, redirectUri: string): Promise<string> {
+  const short = new URL(`${facebookGraphBase()}/oauth/access_token`);
+  short.searchParams.set("client_id", getFacebookAppId());
+  short.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  short.searchParams.set("redirect_uri", redirectUri);
+  short.searchParams.set("code", code);
+  const { access_token: shortToken } = await handleResponse<{ access_token: string }>(
+    await fetch(short.toString())
+  );
+
+  const long = new URL(`${facebookGraphBase()}/oauth/access_token`);
+  long.searchParams.set("grant_type", "fb_exchange_token");
+  long.searchParams.set("client_id", getFacebookAppId());
+  long.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  long.searchParams.set("fb_exchange_token", shortToken);
+  const { access_token } = await handleResponse<{ access_token: string }>(
+    await fetch(long.toString())
+  );
+  return access_token;
+}
+
+export interface FacebookPage {
+  id: string;
+  name: string;
+  access_token: string;
+  tasks?: string[];
+}
+
+/** Pages the user granted, each with its own Page access token. */
+export async function getFacebookPages(userToken: string): Promise<FacebookPage[]> {
+  const url = new URL(`${facebookGraphBase()}/me/accounts`);
+  url.searchParams.set("fields", "id,name,access_token,tasks");
+  url.searchParams.set("limit", "100");
+  url.searchParams.set("access_token", userToken);
+  const { data } = await handleResponse<{ data: FacebookPage[] }>(await fetch(url.toString()));
+  return data ?? [];
+}
+
+/** Route this Page's messages (and our own echoes) to the app's webhook. */
+export async function subscribeFacebookPage(pageId: string, pageToken: string): Promise<boolean> {
+  const url = new URL(`${facebookGraphBase()}/${pageId}/subscribed_apps`);
+  url.searchParams.set("subscribed_fields", "messages,messaging_postbacks,message_echoes");
+  url.searchParams.set("access_token", pageToken);
+  const result = await handleResponse<{ success?: boolean }>(
+    await fetch(url.toString(), { method: "POST" })
+  );
+  return Boolean(result.success);
+}
+
+/** Messenger Send API: a plain text reply inside the 24-hour window. */
+export async function sendPageMessage(
+  pageToken: string,
+  pageId: string,
+  userId: string,
+  message: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(`${facebookGraphBase()}/${pageId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pageToken}`,
+    },
+    body: JSON.stringify({
+      recipient: { id: userId },
+      messaging_type: "RESPONSE",
+      message: { text: message },
+    }),
+  });
+  return handleResponse(response);
+}

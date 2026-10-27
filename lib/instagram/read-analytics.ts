@@ -1,6 +1,6 @@
 import * as meta from "@/lib/meta/client";
 import { zernioRequest } from "@/lib/zernio/client";
-import type { InstagramContext, ZernioContext } from "./context";
+import { FacebookPageUnsupportedError, InstagramContext, ZernioContext } from "./context";
 
 export async function getUserFollowStatus({
   context,
@@ -9,6 +9,7 @@ export async function getUserFollowStatus({
   context: InstagramContext;
   recipientId: string;
 }): Promise<boolean | null> {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("getUserFollowStatus");
   if (context.provider === "META")
     return meta.getUserFollowStatus(context.accessToken, recipientId);
   try {
@@ -31,6 +32,7 @@ export async function getMediaInsights({
   mediaId: string;
   metrics: string[];
 }): Promise<meta.InstagramMediaInsights> {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("getMediaInsights");
   if (context.provider === "META")
     return meta.getMediaInsights(context.accessToken, mediaId, metrics);
   const result = await zernioRequest<{
@@ -74,6 +76,7 @@ export async function getFollowerCountSeries({
   context: InstagramContext;
   igUserId: string;
 }): Promise<meta.FollowerCountPoint[] | null> {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("getFollowerCountSeries");
   if (context.provider === "META")
     return meta.getFollowerCountSeries(context.accessToken, igUserId);
   return null;

@@ -446,10 +446,33 @@ describe("parseMessageEvents", () => {
     expect(parseMessageEvents(payload)).toHaveLength(0);
   });
 
-  it("should ignore non-instagram payloads", () => {
+  it("parses Facebook Page (Messenger) messages the same way", () => {
     expect(
       parseMessageEvents({
         object: "page",
+        entry: [
+          {
+            id: "page_123",
+            time: 1,
+            messaging: [
+              {
+                sender: { id: "psid_999" },
+                recipient: { id: "page_123" },
+                message: { mid: "m_abc", text: "請問嘉義有服務嗎" },
+              },
+            ],
+          },
+        ],
+      })
+    ).toEqual([
+      { instagramAccountId: "page_123", messageId: "m_abc", messageText: "請問嘉義有服務嗎", senderId: "psid_999" },
+    ]);
+  });
+
+  it("should ignore payloads that are neither Instagram nor a Page", () => {
+    expect(
+      parseMessageEvents({
+        object: "user",
         entry: [
           {
             id: "ig_456",

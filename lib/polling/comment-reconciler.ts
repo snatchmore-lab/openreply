@@ -135,7 +135,7 @@ async function sweepCampaign({
       instagramId: string;
       username: string;
       accessToken: string;
-      provider: "META" | "ZERNIO";
+      provider: "META" | "ZERNIO" | "FACEBOOK_PAGE";
       workspaceId: string;
       zernioAccountId: string | null;
     };

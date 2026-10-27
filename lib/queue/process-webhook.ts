@@ -12,7 +12,8 @@ type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
 export async function processInstagramWebhook({ payload: incoming, provider, workspaceId }: {
   payload: InstagramPayload; provider: InstagramProvider; workspaceId?: string;
 }) {
-  if (incoming.object !== 'instagram' || !Array.isArray(incoming.entry)) return;
+  const expected = provider === 'FACEBOOK_PAGE' ? 'page' : 'instagram';
+  if (incoming.object !== expected || !Array.isArray(incoming.entry)) return;
   const accounts = await prisma.instagramAccount.findMany({
     where: { instagramId: { in: incoming.entry.map(e => e.id) }, provider, ...(workspaceId ? { workspaceId } : {}) },
     select: { id: true, instagramId: true, workspaceId: true },

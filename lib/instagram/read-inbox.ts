@@ -1,6 +1,6 @@
 import * as meta from "@/lib/meta/client";
 import { zernioRequest } from "@/lib/zernio/client";
-import type { InstagramContext } from "./context";
+import { FacebookPageUnsupportedError, InstagramContext } from "./context";
 
 export async function getConversations({
   context,
@@ -9,6 +9,7 @@ export async function getConversations({
   context: InstagramContext;
   igUserId: string;
 }): Promise<meta.InstagramConversation[]> {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("getConversations");
   if (context.provider === "META")
     return meta.getConversations(context.accessToken, igUserId);
   const result = await zernioRequest<{
@@ -46,6 +47,7 @@ export async function getConversationMessages({
   context: InstagramContext;
   conversationId: string;
 }): Promise<meta.InstagramMessage[]> {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("getConversationMessages");
   if (context.provider === "META")
     return meta.getConversationMessages(context.accessToken, conversationId);
   const result = await zernioRequest<{

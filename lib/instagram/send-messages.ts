@@ -5,7 +5,7 @@ import {
   ZernioApiError,
   ZernioDeliveryUnconfirmedError,
 } from "@/lib/zernio/client";
-import type { InstagramContext, ZernioContext } from "./context";
+import { FacebookPageUnsupportedError, InstagramContext, ZernioContext } from "./context";
 import { trackSent } from "@/lib/instagram/sent-mids";
 
 type Button =
@@ -87,6 +87,7 @@ export async function sendPrivateReply({
   message: string;
   postId?: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendPrivateReply");
   if (context.provider === "META")
     return trackSent(
       meta.sendPrivateReply(
@@ -118,6 +119,7 @@ export async function sendPrivateReplyWithButton({
   payload: string;
   postId?: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendPrivateReplyWithButton");
   if (context.provider === "META")
     return trackSent(
       meta.sendPrivateReplyWithButton(
@@ -155,6 +157,7 @@ export async function sendDirectMessageWithButton({
   buttonTitle: string;
   payload: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendDirectMessageWithButton");
   if (context.provider === "META")
     return trackSent(
       meta.sendDirectMessageWithButton(
@@ -191,6 +194,7 @@ export async function sendPrivateReplyWithLinkButton({
   buttons: meta.LinkButton[];
   postId?: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendPrivateReplyWithLinkButton");
   if (context.provider === "META")
     return trackSent(
       meta.sendPrivateReplyWithLinkButton(
@@ -223,6 +227,10 @@ export async function sendDirectMessage({
   userId: string;
   message: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE")
+    return trackSent(
+      meta.sendPageMessage(context.accessToken, context.pageId, userId, message)
+    );
   if (context.provider === "META")
     return trackSent(
       meta.sendDirectMessage(
@@ -250,6 +258,7 @@ export async function sendDirectMessageWithLinkButton({
   text: string;
   buttons: meta.LinkButton[];
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendDirectMessageWithLinkButton");
   if (context.provider === "META")
     return trackSent(
       meta.sendDirectMessageWithLinkButton(
@@ -281,6 +290,7 @@ export async function sendCommentReply({
   message: string;
   postId?: string;
 }) {
+  if (context.provider === "FACEBOOK_PAGE") throw new FacebookPageUnsupportedError("sendCommentReply");
   if (context.provider === "META")
     return meta.sendCommentReply(context.accessToken, commentId, message);
   const result = await zernioRequest<{ data: { commentId: string } }>({

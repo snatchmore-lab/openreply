@@ -7,6 +7,7 @@ import type { AccountOption } from "@/components/account-select";
 import { ZernioConnection } from "@/components/zernio-connection";
 import { AiSettings } from "@/components/ai-settings";
 import { InstagramConnectNotice } from "@/components/instagram-connect-notice";
+import { FacebookConnectNotice } from "@/components/facebook-connect-notice";
 
 interface SettingsData {
   workspace: {
@@ -22,7 +23,7 @@ interface SettingsData {
   } | null;
   instagramAccounts: Array<
     AccountOption & {
-      provider?: "META" | "ZERNIO";
+      provider?: "META" | "ZERNIO" | "FACEBOOK_PAGE";
       tokenExpiresAt: string | null;
       webhookSubscribed: boolean;
     }
@@ -140,6 +141,7 @@ export default function SettingsPage() {
           page fails the production build without one. */}
       <Suspense fallback={null}>
         <InstagramConnectNotice />
+        <FacebookConnectNotice />
       </Suspense>
 
       <section className="panel rounded p-4 sm:p-6 space-y-3">
@@ -199,10 +201,10 @@ export default function SettingsPage() {
               >
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    @{account.username}
+                    {account.provider === "FACEBOOK_PAGE" ? account.username : `@${account.username}`}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}
+                    {account.provider === "FACEBOOK_PAGE" ? t("Facebook Page") : account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}
                     {account.tokenExpiresAt
                       ? new Date(account.tokenExpiresAt).toLocaleDateString(locale)
                       : t("not available")}</>}{" "}
@@ -229,6 +231,12 @@ export default function SettingsPage() {
             className="px-4 py-2 rounded text-sm font-medium transition-colors bg-accent text-white hover:bg-accent-hover"
           >
             {t("Connect using your own Meta app")}
+          </a>
+          <a
+            href="/api/facebook/connect"
+            className="px-4 py-2 rounded text-sm font-medium transition-colors border border-accent/40 text-accent hover:bg-accent/10"
+          >
+            {t("Connect a Facebook Page")}
           </a>
         </div>
       </section>

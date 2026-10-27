@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 
 export type InstagramContext =
   | { provider: "META"; accessToken: string }
+  | { provider: "FACEBOOK_PAGE"; accessToken: string; pageId: string }
   | {
       provider: "ZERNIO";
       apiKey: string;
@@ -12,7 +13,7 @@ export type InstagramContext =
     };
 
 export type ProviderAccount = {
-  provider: "META" | "ZERNIO";
+  provider: "META" | "ZERNIO" | "FACEBOOK_PAGE";
   workspaceId: string;
   zernioAccountId: string | null;
   instagramId: string;
@@ -31,6 +32,12 @@ export async function createInstagramContext(
   account: ProviderAccount,
   operationId?: string
 ): Promise<InstagramContext> {
+  if (account.provider === "FACEBOOK_PAGE")
+    return {
+      provider: "FACEBOOK_PAGE",
+      accessToken: decryptToken(account.accessToken),
+      pageId: account.instagramId,
+    };
   if (account.provider !== "ZERNIO")
     return { provider: "META", accessToken: decryptToken(account.accessToken) };
   if (!account.zernioAccountId)
@@ -50,3 +57,11 @@ export async function createInstagramContext(
 }
 
 export type ZernioContext = Extract<InstagramContext, { provider: "ZERNIO" }>;
+
+/** Thrown by Instagram-only features when called for a Facebook Page. */
+export class FacebookPageUnsupportedError extends Error {
+  constructor(feature: string) {
+    super(`${feature} is not available for Facebook Pages yet`);
+    this.name = "FacebookPageUnsupportedError";
+  }
+}

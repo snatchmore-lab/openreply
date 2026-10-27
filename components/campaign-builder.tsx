@@ -323,7 +323,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) return;
-        const next: AccountOption[] = payload.data.instagramAccounts ?? [];
+        // Campaigns (comment → DM) are Instagram-only for now; Facebook Pages
+        // get the FAQ bot but not campaigns.
+        const next: AccountOption[] = (
+          (payload.data.instagramAccounts ?? []) as (AccountOption & { provider?: string })[]
+        ).filter((a) => a.provider !== "FACEBOOK_PAGE");
         setAccounts(next);
         setSelectedAccountId(
           (prev) => prev || payload.data.selectedInstagramAccountId || next[0]?.id || ""

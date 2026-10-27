@@ -107,7 +107,8 @@ export interface WebhookEchoEvent {
 
 export function parseEchoEvents(payload: WebhookPayload): WebhookEchoEvent[] {
   const events: WebhookEchoEvent[] = [];
-  if (payload.object !== "instagram") return events;
+  // "page" = a Facebook Page (Messenger); same messaging shape as Instagram.
+  if (payload.object !== "instagram" && payload.object !== "page") return events;
 
   for (const entry of payload.entry ?? []) {
     for (const messaging of entry.messaging ?? []) {
@@ -248,7 +249,8 @@ export function parseMessageEvents(
 ): WebhookMessageEvent[] {
   const events: WebhookMessageEvent[] = [];
 
-  if (payload.object !== "instagram") return events;
+  // "page" = a Facebook Page (Messenger); same messaging shape as Instagram.
+  if (payload.object !== "instagram" && payload.object !== "page") return events;
 
   for (const entry of payload.entry ?? []) {
     for (const messaging of entry.messaging ?? []) {

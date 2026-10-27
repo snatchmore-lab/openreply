@@ -35,8 +35,10 @@ export async function getWorkspaceInstagramAccount(
     });
   }
 
+  // The default is the newest Instagram account. A Facebook Page is only used
+  // when asked for by id: the Instagram analytics and inbox can't read Pages.
   return prisma.instagramAccount.findFirst({
-    where: { workspaceId },
+    where: { workspaceId, provider: { not: "FACEBOOK_PAGE" } },
     orderBy: { connectedAt: "desc" },
   });
 }

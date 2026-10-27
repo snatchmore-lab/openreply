@@ -529,5 +529,12 @@
   "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "Enviada com o mesmo botão quando o follow ainda não aparece. Deixe vazio para reenviar a mensagem acima.",
   "Safety reply + urgent email": "Resposta de segurança + e-mail urgente",
   "Keep answering after a handoff": "Continuar respondendo após transferir",
-  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "Depois de transferir, o bot ainda responde perguntas cobertas pela base de conhecimento, até você responder pessoalmente. Ele nunca repete a mensagem de transferência."
+  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "Depois de transferir, o bot ainda responde perguntas cobertas pela base de conhecimento, até você responder pessoalmente. Ele nunca repete a mensagem de transferência.",
+  "Facebook Page": "Página do Facebook",
+  "Connect a Facebook Page": "Conectar uma Página do Facebook",
+  "Facebook Page connected. Pages connected: {count}": "Página do Facebook conectada. Páginas conectadas: {count}",
+  "No Facebook Page was granted. Start again and tick your Page on the Facebook screen.": "Nenhuma Página foi autorizada. Comece de novo e marque sua Página na tela do Facebook.",
+  "Facebook connection cancelled.": "Conexão com o Facebook cancelada.",
+  "Facebook connection failed": "Falha na conexão com o Facebook",
+  "Facebook connection did not complete. Please try again.": "A conexão com o Facebook não foi concluída. Tente novamente."
 }

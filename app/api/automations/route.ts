@@ -346,10 +346,11 @@ export async function POST(request: NextRequest) {
     }),
     requestedInstagramAccountId
       ? prisma.instagramAccount.findFirst({
-          where: { id: requestedInstagramAccountId, workspaceId },
+          // Campaigns are Instagram-only; a Facebook Page never matches.
+          where: { id: requestedInstagramAccountId, workspaceId, provider: { not: "FACEBOOK_PAGE" } },
         })
       : prisma.instagramAccount.findFirst({
-          where: { workspaceId },
+          where: { workspaceId, provider: { not: "FACEBOOK_PAGE" } },
           orderBy: { connectedAt: "desc" },
         }),
   ]);

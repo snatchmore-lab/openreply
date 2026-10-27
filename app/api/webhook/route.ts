@@ -62,7 +62,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await processInstagramWebhook({ payload: payload as Parameters<typeof parseCommentEvents>[0], provider: 'META' });
+    // Facebook Page (Messenger) events arrive with object "page"; they belong
+    // to accounts stored with provider FACEBOOK_PAGE.
+    const provider =
+      (payload as { object?: string }).object === "page" ? "FACEBOOK_PAGE" : "META";
+    await processInstagramWebhook({ payload: payload as Parameters<typeof parseCommentEvents>[0], provider });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ success: false, error: 'Webhook processing failed' }, { status: 500 });

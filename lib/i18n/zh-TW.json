@@ -529,5 +529,12 @@
   "Sent with the same button when the follow still isn't there. Leave empty to resend the message above.": "仍未追蹤時，附上同一個按鈕送出這句。留空就重送上面的追蹤提示。",
   "Safety reply + urgent email": "安全回覆＋緊急通知",
   "Keep answering after a handoff": "轉交後繼續回答",
-  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "轉交給你之後，對方再問知識庫答得出來的問題，機器人照樣回答，直到你本人回覆為止。不會重複發轉交訊息。"
+  "After handing off, the bot still answers questions the knowledge base covers, until you reply yourself. It never repeats the handoff message.": "轉交給你之後，對方再問知識庫答得出來的問題，機器人照樣回答，直到你本人回覆為止。不會重複發轉交訊息。",
+  "Facebook Page": "Facebook 粉絲專頁",
+  "Connect a Facebook Page": "連接 Facebook 粉絲專頁",
+  "Facebook Page connected. Pages connected: {count}": "Facebook 粉絲專頁已連接，共 {count} 個",
+  "No Facebook Page was granted. Start again and tick your Page on the Facebook screen.": "沒有授權任何粉絲專頁。請重新連接，並在 Facebook 的畫面中勾選你的粉絲專頁。",
+  "Facebook connection cancelled.": "已取消 Facebook 連接。",
+  "Facebook connection failed": "Facebook 連接失敗",
+  "Facebook connection did not complete. Please try again.": "Facebook 連接沒有完成，請再試一次。"
 }
