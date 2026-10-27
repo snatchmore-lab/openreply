@@ -20,7 +20,26 @@
  * Portuguese or Spanish campaign keyed on "preco" silently misses every
  * commenter who typed "preço", and vice versa. `foldDiacritics` closes that
  * gap on BOTH sides of the comparison.
+ *
+ * Chinese note: commenters write the same word in Traditional or Simplified
+ * characters ("問它" / "问它"). `foldChineseScript` converts both sides to
+ * Simplified before comparing, so one keyword covers both scripts.
  */
+
+import { Converter } from "opencc-js/t2cn";
+
+let toSimplified: ((text: string) => string) | null = null;
+
+/**
+ * Fold Traditional Chinese to Simplified so "問它" and "问它" compare equal.
+ * Text without Han characters is returned untouched (and the converter is
+ * never loaded for it). Simplified input passes through unchanged.
+ */
+export function foldChineseScript(text: string): string {
+  if (!/\p{Script=Han}/u.test(text)) return text;
+  toSimplified ??= Converter({ from: "tw", to: "cn" });
+  return toSimplified(text);
+}
 
 export interface KeywordMatchResult {
   matched: boolean;
@@ -177,8 +196,8 @@ export function matchKeywords(
     return { matched: false, matchedKeyword: null };
   }
 
-  const cleanedText = foldDiacritics(
-    stripSpecialCharacters(normalizeArabicScript(commentText))
+  const cleanedText = foldChineseScript(
+    foldDiacritics(stripSpecialCharacters(normalizeArabicScript(commentText)))
   ).toLowerCase();
 
   if (!cleanedText) {
@@ -186,8 +205,8 @@ export function matchKeywords(
   }
 
   for (const keyword of keywords) {
-    const cleanedKeyword = foldDiacritics(
-      stripSpecialCharacters(normalizeArabicScript(keyword))
+    const cleanedKeyword = foldChineseScript(
+      foldDiacritics(stripSpecialCharacters(normalizeArabicScript(keyword)))
     ).toLowerCase();
 
     if (!cleanedKeyword) continue;
