@@ -1803,3 +1803,37 @@ it("retains the public reply claim if sending succeeded but its log write failed
   expect(sendCommentReply).toHaveBeenCalledTimes(1);
   expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
 });
+
+describe("human-like pacing of public replies", () => {
+  const withPublic = { ...mockAutomation, publicReplyEnabled: true, publicReplyMessages: ["Sent!"] };
+
+  it("sends the DM first and schedules the public reply for a later pass", async () => {
+    const { sendCommentReply } = await import("@/lib/meta/client");
+    vi.mocked(sendCommentReply).mockResolvedValue({ id: "public-reply" });
+    mockPrisma.automation.findMany.mockResolvedValue([withPublic]);
+
+    await getProcessor()(
+      createMockJob({ ...mockJobData, deferPublicReply: true, publicReplyDelayMs: 12_000 })
+    );
+
+    expect(sendCommentReply).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      "process-comment",
+      expect.objectContaining({ publicReplyOnly: true, deferPublicReply: false }),
+      expect.objectContaining({ delay: 12_000, jobId: "comment_ig_456_comment_555_public" })
+    );
+  });
+
+  it("the later pass posts the public reply and never touches the DM", async () => {
+    const { sendCommentReply } = await import("@/lib/meta/client");
+    vi.mocked(sendCommentReply).mockResolvedValue({ id: "public-reply" });
+    mockPrisma.automation.findMany.mockResolvedValue([withPublic]);
+
+    await getProcessor()(createMockJob({ ...mockJobData, publicReplyOnly: true }));
+
+    expect(sendCommentReply).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockSendPrivateReplyWithButton).not.toHaveBeenCalled();
+  });
+});

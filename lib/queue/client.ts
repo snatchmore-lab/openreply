@@ -34,6 +34,12 @@ export interface ProcessCommentJob {
   // from. Campaigns are bound to that post, so both ids have to be matched.
   originalMediaId?: string;
   requeueAttempt?: number;
+  // Human-like pacing: the first pass sends the DM and leaves the public reply
+  // to a second, later pass of the same job (`publicReplyOnly`), delayed by
+  // `publicReplyDelayMs`. Absent on reconciler jobs, which keep the old order.
+  deferPublicReply?: boolean;
+  publicReplyDelayMs?: number;
+  publicReplyOnly?: boolean;
   // Which path enqueued this comment. It is not copied to ProcessedComment or
   // used for reconciliation dedup.
   source?: CommentSource;

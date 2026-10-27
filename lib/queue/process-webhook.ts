@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
+import { humanDelays } from '@/lib/queue/pacing';
 import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { wasSentByUs } from '@/lib/instagram/sent-mids';
 import { handleHumanEcho } from '@/lib/ai/faq';
@@ -42,6 +43,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
+      const pace = humanDelays();
       await queue.add(
         "process-comment",
         {
@@ -54,9 +56,12 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           mediaId: event.mediaId,
           originalMediaId: event.originalMediaId,
           source: "WEBHOOK",
+          deferPublicReply: true,
+          publicReplyDelayMs: pace.publicReplyAfterDmMs,
         },
         {
           jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
+          delay: pace.dmMs,
         }
       );
 
@@ -119,6 +124,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           jobId: `message_${event.instagramAccountId}_${Buffer.from(
             event.messageId
           ).toString("base64url")}`,
+          delay: humanDelays().dmMs,
         }
       );
 

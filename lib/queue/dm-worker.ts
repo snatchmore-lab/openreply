@@ -583,6 +583,32 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       replyPool.length > 0 &&
       !existingLog?.publicReplySentAt &&
       !existingLog?.publicReplyDeliveryUnconfirmed &&
+      job.data.deferPublicReply
+    ) {
+      // Human-like pacing: post the public reply in a later pass of this job.
+      // One deferred job per comment covers every matching campaign.
+      try {
+        await getDMQueue().add(
+          "process-comment",
+          {
+            ...job.data,
+            deferPublicReply: false,
+            publicReplyOnly: true,
+            requeueAttempt: 0,
+          },
+          {
+            delay: job.data.publicReplyDelayMs ?? 15_000,
+            jobId: `comment_${instagramAccountId}_${commentId}_public`,
+          }
+        );
+      } catch (error) {
+        console.error("[DM Worker] Could not schedule public reply:", formatError(error));
+      }
+    } else if (
+      automation.publicReplyEnabled &&
+      replyPool.length > 0 &&
+      !existingLog?.publicReplySentAt &&
+      !existingLog?.publicReplyDeliveryUnconfirmed &&
       await claimCommentDelivery(automation.id, commentId, "public")
     ) {
       try {
@@ -643,8 +669,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     }
 
     // DM already sent on an earlier pass; the public reply retry above was all
-    // this run needed. Don't re-send the DM.
-    if (!needsDm) continue;
+    // this run needed. Don't re-send the DM. A public-reply-only pass never
+    // touches the DM either: the first pass owns it.
+    if (!needsDm || job.data.publicReplyOnly) continue;
 
     // Meta allows exactly ONE private reply per comment, ever — across every
     // campaign. When several campaigns match the same comment (duplicated
