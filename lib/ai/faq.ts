@@ -20,7 +20,7 @@ import {
   sendDirectMessage,
 } from "@/lib/instagram/provider";
 import { completeJson } from "./service";
-import { capByLines, formatAiText } from "./text";
+import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
 import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
 import { isValidEmail, sendThrottledNotifyEmail } from "@/lib/notify/email";
@@ -55,6 +55,7 @@ export interface FaqSettings {
   maxReplyChars: number;
   notifyEmail?: string | null;
   answerAfterHandoff?: boolean;
+  maxLineWidth?: number;
 }
 
 /**
@@ -65,7 +66,7 @@ export interface FaqSettings {
 export async function previewFaqAnswer(input: {
   workspaceId: string;
   question: string;
-  settings: Pick<FaqSettings, "knowledgeBase" | "handoffMessage" | "tone" | "maxReplyChars">;
+  settings: Pick<FaqSettings, "knowledgeBase" | "handoffMessage" | "tone" | "maxReplyChars" | "maxLineWidth">;
 }): Promise<
   | { kind: "answered" | "handoff" | "crisis"; text: string }
   | { kind: "unavailable"; detail?: string }
@@ -84,6 +85,7 @@ export async function previewFaqAnswer(input: {
       history: [],
       tone: normalizeTone(input.settings.tone),
       maxChars,
+      lineWidth: clampLineWidth(input.settings.maxLineWidth),
     }),
     schema: FaqOutput,
     cacheScope: ["preview"],
@@ -109,11 +111,15 @@ export type FaqOutcome =
         | "send-failed";
     };
 
+export function clampLineWidth(width: number | null | undefined): number {
+  return Math.min(30, Math.max(8, Math.round(width ?? MAX_LINE_WIDTH)));
+}
+
 /** Same clean-up as the opener, minus the URL strip: KB URLs are allowed. */
-export function sanitizeAnswer(raw: string, maxChars: number): string | null {
+export function sanitizeAnswer(raw: string, maxChars: number, lineWidth?: number): string | null {
   let text = raw.replace(/\{[a-z_]+\}/gi, "").trim();
   text = text.replace(/^["「『“]+/, "").replace(/["」』”]+$/, "").trim();
-  text = capByLines(formatAiText(text), maxChars);
+  text = capByLines(formatAiText(text, clampLineWidth(lineWidth)), maxChars);
   return text || null;
 }
 
@@ -123,7 +129,7 @@ export function sanitizeAnswer(raw: string, maxChars: number): string | null {
  */
 export function decideFaqReply(
   output: { answer: string; confident: boolean; crisis?: boolean } | null,
-  settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars">
+  settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars" | "maxLineWidth">
 ):
   | { kind: "answered"; text: string }
   | { kind: "handoff"; text: string }
@@ -132,7 +138,7 @@ export function decideFaqReply(
   if (output?.crisis) return { kind: "crisis", text: CRISIS_MESSAGE };
   const handoff = settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE;
   if (!output || !output.confident) return { kind: "handoff", text: handoff };
-  const text = sanitizeAnswer(output.answer, settings.maxReplyChars);
+  const text = sanitizeAnswer(output.answer, settings.maxReplyChars, settings.maxLineWidth);
   if (!text) return { kind: "handoff", text: handoff };
   return { kind: "answered", text };
 }
@@ -325,6 +331,7 @@ export async function handleFaqMessage(input: {
       history,
       tone,
       maxChars,
+      lineWidth: clampLineWidth(settings.maxLineWidth),
     }),
     schema: FaqOutput,
     cacheScope: [conversation.id],

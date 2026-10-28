@@ -1,0 +1,2 @@
+ALTER TABLE "WorkspaceAiSettings" ADD COLUMN "maxLineWidth" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "InstagramAccountAiSettings" ADD COLUMN "maxLineWidth" INTEGER NOT NULL DEFAULT 10;

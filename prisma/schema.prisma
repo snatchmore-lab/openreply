@@ -512,6 +512,8 @@ model WorkspaceAiSettings {
   notifyEmail        String?
   /// Keep answering knowledge-base questions after a handoff, until a person replies.
   answerAfterHandoff Boolean  @default(false)
+  /// Widest line in a bot reply, in Chinese characters (2 ASCII = 1).
+  maxLineWidth       Int      @default(10)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -534,6 +536,8 @@ model InstagramAccountAiSettings {
   notifyEmail        String?
   /// Keep answering knowledge-base questions after a handoff, until a person replies.
   answerAfterHandoff Boolean  @default(false)
+  /// Widest line in a bot reply, in Chinese characters (2 ASCII = 1).
+  maxLineWidth       Int      @default(10)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

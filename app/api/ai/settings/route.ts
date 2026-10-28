@@ -19,6 +19,7 @@ const DEFAULTS = {
   maxReplyChars: 300,
   notifyEmail: null as string | null,
   answerAfterHandoff: false,
+  maxLineWidth: 10,
 };
 
 const updateSchema = z.object({
@@ -31,6 +32,7 @@ const updateSchema = z.object({
   // Empty string clears it.
   notifyEmail: z.union([z.string().email().max(200), z.literal("")]).optional().nullable(),
   answerAfterHandoff: z.boolean().optional(),
+  maxLineWidth: z.number().int().min(8).max(30).optional(),
 });
 
 type SettingsFields = typeof DEFAULTS;
@@ -45,6 +47,7 @@ function pick(row: SettingsFields & Record<string, unknown>): SettingsFields {
     maxReplyChars: row.maxReplyChars,
     notifyEmail: row.notifyEmail ?? null,
     answerAfterHandoff: row.answerAfterHandoff ?? false,
+    maxLineWidth: row.maxLineWidth ?? 10,
   };
 }
 

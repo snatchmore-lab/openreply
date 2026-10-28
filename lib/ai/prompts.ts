@@ -87,6 +87,8 @@ export interface FaqPromptInput {
   history: FaqHistoryItem[];
   tone: OpeningTone;
   maxChars: number;
+  /** Widest line, in Chinese characters. Defaults to 10. */
+  lineWidth?: number;
 }
 
 export const FAQ_SYSTEM_PROMPT = `You answer Instagram direct messages on behalf of a creator, using ONLY the knowledge base provided in the next system block.
@@ -99,7 +101,7 @@ Rules:
 - Reply in the language of the message. Default to Traditional Chinese (台灣用語).
 - Keep the answer within the character limit. Plain text only: no markdown, no bullet lists, no headings.
 - Never use the Chinese full stop 「。」.
-- Put each phrase on its own line. Every line is at most 10 Chinese characters wide (two English letters or digits count as one character). Never use a space to separate phrases; start a new line instead. Break between words, never inside one. Example layout:
+- Put each phrase on its own line. Every line is at most the "Line width" given with the message, in Chinese characters (two English letters or digits count as one character). Break where a person naturally pauses, between whole phrases, never inside a word or a fixed phrase. Never use a space to separate phrases; start a new line instead. Example layout (line width 10):
 能力盤點完全免費喔
 在 IG 留言「能力」
 或點 bio 的連結
@@ -119,7 +121,11 @@ export function buildFaqUserPrompt(input: FaqPromptInput): string {
     input.tone === "professional"
       ? "Tone: professional, warm, concise, no emoji."
       : "Tone: friendly and casual, at most one emoji.";
-  const lines: string[] = [toneLine, `Character limit: ${input.maxChars}`];
+  const lines: string[] = [
+    toneLine,
+    `Character limit: ${input.maxChars}`,
+    `Line width: ${input.lineWidth ?? 10} Chinese characters`,
+  ];
   if (input.history.length > 0) {
     lines.push("", "Recent conversation (oldest first):");
     for (const item of input.history) {

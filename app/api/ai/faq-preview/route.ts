@@ -13,6 +13,7 @@ const schema = z.object({
   handoffMessage: z.string().max(500).optional().default(""),
   tone: z.enum(["friendly", "professional"]).optional().default("friendly"),
   maxReplyChars: z.number().int().min(50).max(1000).optional().default(300),
+  maxLineWidth: z.number().int().min(8).max(30).optional().default(10),
 });
 
 /**

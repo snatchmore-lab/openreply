@@ -402,6 +402,7 @@
   "Sent once when the bot cannot answer. The conversation is then marked \"needs a human\" and the bot stays quiet.": "機器人答不了時送出一次，之後那段對話會標記「需要真人」，機器人就不再回。",
   "Max bot replies per person per hour": "同一人每小時最多回覆",
   "Max reply length": "回覆最多字數",
+  "Max characters per line": "每行最多字數",
   "Save AI settings": "儲存 AI 設定",
   "AI settings saved.": "AI 設定已儲存。",
   "Could not save AI settings.": "AI 設定儲存失敗。",

@@ -127,3 +127,15 @@ describe("trackSent", () => {
     expect(await wasSentByUs("mid_2")).toBe(false);
   });
 });
+
+describe("per-account line width", () => {
+  it("keeps a 12-character line whole when the account allows 16", () => {
+    expect(sanitizeAnswer("營業時間不特別公告唷～", 300, 16)).toBe("營業時間不特別公告唷～");
+    expect(sanitizeAnswer("營業時間不特別公告唷～", 300)).toContain("\n");
+  });
+
+  it("tells the model the width", () => {
+    const user = buildFaqUserPrompt({ question: "q", history: [], tone: "friendly", maxChars: 300, lineWidth: 16 });
+    expect(user).toContain("Line width: 16");
+  });
+});

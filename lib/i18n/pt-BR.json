@@ -402,6 +402,7 @@
   "Sent once when the bot cannot answer. The conversation is then marked \"needs a human\" and the bot stays quiet.": "Enviada uma vez quando o bot não consegue responder. A conversa é marcada como \"precisa de humano\" e o bot fica em silêncio.",
   "Max bot replies per person per hour": "Máx. de respostas do bot por pessoa por hora",
   "Max reply length": "Tamanho máx. da resposta",
+  "Max characters per line": "Máx. de caracteres por linha",
   "Save AI settings": "Salvar configurações de IA",
   "AI settings saved.": "Configurações de IA salvas.",
   "Could not save AI settings.": "Não foi possível salvar as configurações de IA.",

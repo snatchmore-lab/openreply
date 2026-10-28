@@ -13,6 +13,7 @@ interface AiSettingsData {
   maxReplyChars: number;
   notifyEmail: string | null;
   answerAfterHandoff?: boolean;
+  maxLineWidth?: number;
   scope: "workspace" | "account";
   inherited: boolean;
 }
@@ -52,6 +53,7 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
           handoffMessage: data.handoffMessage,
           tone: data.tone === "professional" ? "professional" : "friendly",
           maxReplyChars: data.maxReplyChars,
+          maxLineWidth: data.maxLineWidth ?? 10,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -119,6 +121,7 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
           maxReplyChars: data.maxReplyChars,
           notifyEmail: data.notifyEmail?.trim() ?? "",
           answerAfterHandoff: Boolean(data.answerAfterHandoff),
+          maxLineWidth: data.maxLineWidth ?? 10,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -309,6 +312,23 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
                   const n = Number(e.target.value);
                   if (Number.isFinite(n)) {
                     setData({ ...data, maxReplyChars: Math.min(1000, Math.max(50, Math.round(n))) });
+                  }
+                }}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-muted">
+              {t("Max characters per line")}
+              <input
+                type="number"
+                min={8}
+                max={30}
+                value={data.maxLineWidth ?? 10}
+                disabled={disabled}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) {
+                    setData({ ...data, maxLineWidth: Math.min(30, Math.max(8, Math.round(n))) });
                   }
                 }}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none disabled:opacity-60"
