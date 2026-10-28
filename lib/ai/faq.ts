@@ -177,7 +177,7 @@ async function fillPageSenderName(
   try {
     const context = await createInstagramContext(account, `name:${conversationId}`);
     if (context.provider !== "FACEBOOK_PAGE") return;
-    const name = await getPageUserName(context.accessToken, senderId);
+    const name = await getPageUserName(context.accessToken, context.pageId, senderId);
     if (name) await prisma.conversation.update({ where: { id: conversationId }, data: { senderName: name } });
   } catch {
     // Cosmetic only; the inbox falls back to the id.

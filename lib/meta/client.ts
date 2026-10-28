@@ -921,13 +921,25 @@ export async function subscribeFacebookPage(pageId: string, pageToken: string): 
   return Boolean(result.success);
 }
 
-/** A Messenger customer's display name (User Profile API). */
-export async function getPageUserName(pageToken: string, userId: string): Promise<string | null> {
-  const url = new URL(`${facebookGraphBase()}/${userId}`);
-  url.searchParams.set("fields", "name");
+/**
+ * A Messenger customer's display name, read from the Page's conversation with
+ * them (the User Profile API only answers for app role-holders).
+ */
+export async function getPageUserName(
+  pageToken: string,
+  pageId: string,
+  userId: string
+): Promise<string | null> {
+  const url = new URL(`${facebookGraphBase()}/${pageId}/conversations`);
+  url.searchParams.set("platform", "messenger");
+  url.searchParams.set("user_id", userId);
+  url.searchParams.set("fields", "participants");
   url.searchParams.set("access_token", pageToken);
-  const result = await handleResponse<{ name?: string }>(await fetch(url.toString()));
-  return result.name?.trim() || null;
+  const result = await handleResponse<{
+    data?: { participants?: { data?: { id: string; name?: string }[] } }[];
+  }>(await fetch(url.toString()));
+  const person = result.data?.[0]?.participants?.data?.find((p) => p.id === userId);
+  return person?.name?.trim() || null;
 }
 
 /** Messenger Send API: one image (by public URL) inside the 24-hour window. */
