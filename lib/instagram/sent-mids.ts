@@ -44,3 +44,36 @@ export async function trackSent<T extends { message_id?: string } | undefined>(
   void rememberSentMessageId(result?.message_id);
   return result;
 }
+
+/**
+ * Meta's own automations (Page instant replies, saved-reply templates, ad
+ * welcome flows) answer within a few seconds of the customer's message and
+ * echo back like a human reply. A person never answers that fast, so an echo
+ * inside this window after the customer's last inbound message is treated as
+ * an automation and does not take the thread away from the bot.
+ */
+const AUTOMATION_WINDOW_SECONDS = 15;
+const INBOUND_PREFIX = "openreply:inbound:";
+
+export async function rememberInboundMessage(accountId: string, senderId: string): Promise<void> {
+  if (!process.env.REDIS_URL) return;
+  try {
+    await getRedisConnection().set(
+      `${INBOUND_PREFIX}${accountId}:${senderId}`,
+      "1",
+      "EX",
+      AUTOMATION_WINDOW_SECONDS
+    );
+  } catch {
+    // Best-effort: without it the echo counts as human, the old behaviour.
+  }
+}
+
+export async function isLikelyAutomatedEcho(accountId: string, recipientId: string): Promise<boolean> {
+  if (!process.env.REDIS_URL) return false;
+  try {
+    return (await getRedisConnection().exists(`${INBOUND_PREFIX}${accountId}:${recipientId}`)) === 1;
+  } catch {
+    return false;
+  }
+}

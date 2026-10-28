@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { humanDelays } from '@/lib/queue/pacing';
 import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
-import { wasSentByUs } from '@/lib/instagram/sent-mids';
+import { isLikelyAutomatedEcho, rememberInboundMessage, wasSentByUs } from '@/lib/instagram/sent-mids';
 import { handleHumanEcho } from '@/lib/ai/faq';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
@@ -107,6 +107,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of messageEvents) {
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
+      await rememberInboundMessage(event.instagramAccountId, event.senderId);
 
       await queue.add(
         MESSAGE_JOB_NAME,
@@ -148,6 +149,8 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of echoEvents) {
       if (!accountMap.has(event.instagramAccountId)) continue;
       if (await wasSentByUs(event.messageId)) continue;
+      // Meta's instant replies / templates, not the owner typing.
+      if (await isLikelyAutomatedEcho(event.instagramAccountId, event.recipientId)) continue;
       await handleHumanEcho({
         instagramAccountId: event.instagramAccountId,
         recipientId: event.recipientId,
