@@ -419,6 +419,12 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "not-ai-state" };
   }
 
+  // The person may have sent more while the model was writing; that newer
+  // message's job answers everything, this draft is dropped.
+  if (!(await isLatestInboundMessage(input.instagramAccountId, input.senderId, input.messageId))) {
+    return { kind: "silent", reason: "superseded" };
+  }
+
   // Share the per-account hourly DM budget with campaign sends so the bot can
   // never push the account over Instagram's cap. No slot → stay silent now;
   // the person can ask again later.

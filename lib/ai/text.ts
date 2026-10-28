@@ -224,6 +224,8 @@ export function formatAiText(text: string, max = MAX_LINE_WIDTH): string {
     if (/[！？!?]/.test(ch) && HAN.test(chars[i + 1] ?? "")) joined += "\n";
   }
   return joined
+    // Punctuation the model put at the start of a line belongs to the line before.
+    .replace(/[ \t]*\n\s*(?=[，、,：:；;！!？?」』）)》〉】…～~])/g, "")
     .split("\n")
     .map((line) => line.replace(/[ \t]+/g, " ").trim())
     .filter(Boolean)

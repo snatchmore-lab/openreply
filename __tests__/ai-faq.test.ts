@@ -194,3 +194,10 @@ describe("messages sent in a row", () => {
     expect(history).toEqual([{ role: "user", text: "昨天的問題" }]);
   });
 });
+
+describe("punctuation at a line start", () => {
+  it("moves a leading 、 back onto the line before", async () => {
+    const { formatAiText } = await import("@/lib/ai/text");
+    expect(formatAiText("請問工地是在哪一縣市\n、哪一區呢😊", 16)).not.toMatch(/\n、/);
+  });
+});
