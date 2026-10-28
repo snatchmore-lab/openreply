@@ -17,6 +17,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import {
   createInstagramContext,
   hasInstagramCredentials,
+  sendDirectImage,
   sendDirectMessage,
 } from "@/lib/instagram/provider";
 import { completeJson } from "./service";
@@ -44,7 +45,33 @@ const FaqOutput = z.object({
   answer: z.string().max(2000),
   confident: z.boolean(),
   crisis: z.boolean(),
+  /** Photo URLs picked from the knowledge base's [圖片] lines. */
+  images: z.array(z.string()),
 });
+
+const MAX_IMAGES_PER_REPLY = 3;
+
+/**
+ * Photo URLs the knowledge base offers, one per line as
+ * "[圖片] description：https://…". Only these may ever be sent.
+ */
+export function knowledgeBaseImages(knowledgeBase: string): Set<string> {
+  const urls = new Set<string>();
+  for (const line of knowledgeBase.split(/\r?\n/)) {
+    if (!line.trim().startsWith("[圖片]")) continue;
+    const url = line.match(/https:\/\/\S+/)?.[0];
+    if (url) urls.add(url);
+  }
+  return urls;
+}
+
+/** The model's picks, minus anything not listed in the knowledge base. */
+export function pickImages(requested: string[] | undefined, knowledgeBase: string): string[] {
+  const allowed = knowledgeBaseImages(knowledgeBase);
+  return [...new Set((requested ?? []).map((u) => u.trim()))]
+    .filter((u) => allowed.has(u))
+    .slice(0, MAX_IMAGES_PER_REPLY);
+}
 
 export interface FaqSettings {
   faqEnabled: boolean;
@@ -376,6 +403,27 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "send-failed" };
   }
 
+  // Photos follow the text. Each one is a DM against the hourly budget; a
+  // failed or over-budget photo is dropped, the text already went out.
+  const sentImages: string[] = [];
+  if (decision.kind === "answered") {
+    for (const imageUrl of pickImages(result.result?.images, settings.knowledgeBase)) {
+      const imageSlot = await reserveDMSlot(account.instagramId);
+      if (!imageSlot.allowed) break;
+      try {
+        await sendDirectImage({ context, userId: input.senderId, imageUrl });
+        sentImages.push(imageUrl);
+      } catch (error) {
+        if (imageSlot.reserved) await releaseDMSlot(account.instagramId).catch(() => {});
+        console.error(
+          "[FAQ bot] Failed to send image:",
+          error instanceof Error ? error.message : error
+        );
+        break;
+      }
+    }
+  }
+
   const needsHuman = decision.kind !== "answered";
   const aiMeta = {
     confident: decision.kind === "answered",
@@ -389,7 +437,7 @@ export async function handleFaqMessage(input: {
       data: {
         conversationId: conversation.id,
         direction: "OUT_AI",
-        text: decision.text,
+        text: [decision.text, ...sentImages.map((u) => `[圖片] ${u}`)].join("\n"),
         aiMeta: aiMeta as unknown as Prisma.InputJsonValue,
       },
     }),

@@ -245,6 +245,20 @@ export async function sendDirectMessage({
   );
 }
 
+/** One image DM. Only Facebook Pages support it for now. */
+export async function sendDirectImage({
+  context,
+  userId,
+  imageUrl,
+}: {
+  context: InstagramContext;
+  userId: string;
+  imageUrl: string;
+}) {
+  if (context.provider !== "FACEBOOK_PAGE") throw new Error("Image DMs are only supported on Facebook Pages");
+  return trackSent(meta.sendPageImage(context.accessToken, context.pageId, userId, imageUrl));
+}
+
 export async function sendDirectMessageWithLinkButton({
   context,
   instagramAccountId,

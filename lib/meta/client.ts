@@ -921,6 +921,28 @@ export async function subscribeFacebookPage(pageId: string, pageToken: string): 
   return Boolean(result.success);
 }
 
+/** Messenger Send API: one image (by public URL) inside the 24-hour window. */
+export async function sendPageImage(
+  pageToken: string,
+  pageId: string,
+  userId: string,
+  imageUrl: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(`${facebookGraphBase()}/${pageId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pageToken}`,
+    },
+    body: JSON.stringify({
+      recipient: { id: userId },
+      messaging_type: "RESPONSE",
+      message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: true } } },
+    }),
+  });
+  return handleResponse(response);
+}
+
 /** Messenger Send API: a plain text reply inside the 24-hour window. */
 export async function sendPageMessage(
   pageToken: string,

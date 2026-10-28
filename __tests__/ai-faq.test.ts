@@ -139,3 +139,26 @@ describe("per-account line width", () => {
     expect(user).toContain("Line width: 16");
   });
 });
+
+describe("knowledge-base photos", () => {
+  const kb = [
+    "【樣式照片】",
+    "[圖片] 白框PS板一字三橫拉：https://example.test/a.jpg",
+    "[圖片] 無框內推門：https://example.test/b.jpg",
+    "官網 https://example.test/not-a-photo",
+  ].join("\n");
+
+  it("only sends URLs listed on [圖片] lines", async () => {
+    const { pickImages } = await import("@/lib/ai/faq");
+    expect(
+      pickImages(["https://example.test/b.jpg", "https://evil.test/x.jpg", "https://example.test/not-a-photo"], kb)
+    ).toEqual(["https://example.test/b.jpg"]);
+  });
+
+  it("caps at three and drops duplicates", async () => {
+    const { pickImages } = await import("@/lib/ai/faq");
+    const many = Array.from({ length: 5 }, (_, i) => `[圖片] p${i}：https://example.test/${i}.jpg`).join("\n");
+    const urls = Array.from({ length: 5 }, (_, i) => `https://example.test/${i}.jpg`);
+    expect(pickImages([urls[0], urls[0], ...urls], many)).toEqual(urls.slice(0, 3));
+  });
+});
