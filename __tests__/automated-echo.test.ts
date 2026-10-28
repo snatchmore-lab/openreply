@@ -34,3 +34,24 @@ describe("Meta automation echoes", () => {
     expect(await isLikelyAutomatedEcho("p", "u")).toBe(false);
   });
 });
+
+describe("latest inbound message", () => {
+  it("only the newest message from a person is answered", async () => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://test";
+    const store = new Map<string, string>();
+    vi.doMock("@/lib/queue/client", () => ({
+      getRedisConnection: () => ({
+        set: async (k: string, v: string) => (store.set(k, v), "OK"),
+        get: async (k: string) => store.get(k) ?? null,
+        exists: async (k: string) => (store.has(k) ? 1 : 0),
+      }),
+    }));
+    const { rememberInboundMessage, isLatestInboundMessage } = await import("@/lib/instagram/sent-mids");
+    await rememberInboundMessage("page1", "user1", "m1");
+    await rememberInboundMessage("page1", "user1", "m2");
+    expect(await isLatestInboundMessage("page1", "user1", "m1")).toBe(false);
+    expect(await isLatestInboundMessage("page1", "user1", "m2")).toBe(true);
+    expect(await isLatestInboundMessage("page1", "user9", "x")).toBe(true);
+  });
+});

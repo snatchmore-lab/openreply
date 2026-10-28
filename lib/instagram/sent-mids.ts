@@ -55,15 +55,26 @@ export async function trackSent<T extends { message_id?: string } | undefined>(
 const AUTOMATION_WINDOW_SECONDS = 15;
 const INBOUND_PREFIX = "openreply:inbound:";
 
-export async function rememberInboundMessage(accountId: string, senderId: string): Promise<void> {
+/**
+ * The newest inbound message id per person. The FAQ bot waits a few seconds
+ * after each message and only the job for the newest one answers, covering
+ * everything the person sent in a row.
+ */
+const LATEST_PREFIX = "openreply:latest-inbound:";
+const LATEST_TTL_SECONDS = 10 * 60;
+
+export async function rememberInboundMessage(
+  accountId: string,
+  senderId: string,
+  messageId?: string
+): Promise<void> {
   if (!process.env.REDIS_URL) return;
   try {
-    await getRedisConnection().set(
-      `${INBOUND_PREFIX}${accountId}:${senderId}`,
-      "1",
-      "EX",
-      AUTOMATION_WINDOW_SECONDS
-    );
+    const redis = getRedisConnection();
+    await redis.set(`${INBOUND_PREFIX}${accountId}:${senderId}`, "1", "EX", AUTOMATION_WINDOW_SECONDS);
+    if (messageId) {
+      await redis.set(`${LATEST_PREFIX}${accountId}:${senderId}`, messageId, "EX", LATEST_TTL_SECONDS);
+    }
   } catch {
     // Best-effort: without it the echo counts as human, the old behaviour.
   }
@@ -75,5 +86,20 @@ export async function isLikelyAutomatedEcho(accountId: string, recipientId: stri
     return (await getRedisConnection().exists(`${INBOUND_PREFIX}${accountId}:${recipientId}`)) === 1;
   } catch {
     return false;
+  }
+}
+
+/** False only when Redis knows of a newer message from this person. */
+export async function isLatestInboundMessage(
+  accountId: string,
+  senderId: string,
+  messageId: string
+): Promise<boolean> {
+  if (!process.env.REDIS_URL) return true;
+  try {
+    const latest = await getRedisConnection().get(`${LATEST_PREFIX}${accountId}:${senderId}`);
+    return !latest || latest === messageId;
+  } catch {
+    return true;
   }
 }

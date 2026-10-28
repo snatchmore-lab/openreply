@@ -162,3 +162,35 @@ describe("knowledge-base photos", () => {
     expect(pickImages([urls[0], urls[0], ...urls], many)).toEqual(urls.slice(0, 3));
   });
 });
+
+describe("messages sent in a row", () => {
+  const now = new Date("2026-10-28T10:00:00Z");
+  const at = (s: number) => new Date(now.getTime() - s * 1000);
+
+  it("answers the person's trailing unanswered messages together", async () => {
+    const { splitPendingMessages } = await import("@/lib/ai/faq");
+    const { pending, history } = splitPendingMessages(
+      [
+        { direction: "IN", text: "你好", createdAt: at(300) },
+        { direction: "OUT_AI", text: "您好😊", createdAt: at(290) },
+        { direction: "IN", text: "淋浴拉門", createdAt: at(8) },
+      ],
+      now
+    );
+    expect(pending).toEqual(["淋浴拉門"]);
+    expect(history).toEqual([
+      { role: "user", text: "你好" },
+      { role: "assistant", text: "您好😊" },
+    ]);
+  });
+
+  it("leaves old unanswered messages in history", async () => {
+    const { splitPendingMessages } = await import("@/lib/ai/faq");
+    const { pending, history } = splitPendingMessages(
+      [{ direction: "IN", text: "昨天的問題", createdAt: at(86_400) }],
+      now
+    );
+    expect(pending).toEqual([]);
+    expect(history).toEqual([{ role: "user", text: "昨天的問題" }]);
+  });
+});

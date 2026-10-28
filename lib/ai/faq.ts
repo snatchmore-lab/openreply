@@ -20,6 +20,7 @@ import {
   sendDirectImage,
   sendDirectMessage,
 } from "@/lib/instagram/provider";
+import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
@@ -135,8 +136,37 @@ export type FaqOutcome =
         | "not-ai-state"
         | "hourly-limit"
         | "ai-unavailable"
-        | "send-failed";
+        | "send-failed"
+        | "superseded";
     };
+
+/** Unanswered messages from the last two minutes are answered together. */
+const PENDING_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Split the earlier messages (oldest first, current one excluded) into the
+ * person's trailing unanswered messages and the history before them.
+ */
+export function splitPendingMessages(
+  earlier: { direction: string; text: string; createdAt: Date }[],
+  now: Date
+): { pending: string[]; history: FaqHistoryItem[] } {
+  let start = earlier.length;
+  while (
+    start > 0 &&
+    earlier[start - 1].direction === "IN" &&
+    now.getTime() - earlier[start - 1].createdAt.getTime() <= PENDING_WINDOW_MS
+  ) {
+    start -= 1;
+  }
+  return {
+    pending: earlier.slice(start).map((m) => m.text),
+    history: earlier
+      .slice(0, start)
+      .slice(-HISTORY_TURNS)
+      .map((m) => ({ role: m.direction === "IN" ? "user" : "assistant", text: m.text })),
+  };
+}
 
 export function clampLineWidth(width: number | null | undefined): number {
   return Math.min(30, Math.max(8, Math.round(width ?? MAX_LINE_WIDTH)));
@@ -310,6 +340,11 @@ export async function handleFaqMessage(input: {
     },
   });
 
+  // The person sent something newer: that message's job answers both.
+  if (!(await isLatestInboundMessage(input.instagramAccountId, input.senderId, input.messageId))) {
+    return { kind: "silent", reason: "superseded" };
+  }
+
   // HUMAN (the owner replied) always silences the bot. NEEDS_HUMAN does too,
   // unless the account opted in to keep answering what the knowledge base
   // covers while the owner has not replied yet.
@@ -335,15 +370,20 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "no-account" };
   }
 
-  const historyRows = await prisma.conversationMessage.findMany({
-    where: { conversationId: conversation.id, messageId: { not: input.messageId } },
-    orderBy: { createdAt: "desc" },
-    take: HISTORY_TURNS,
-    select: { direction: true, text: true },
-  });
-  const history: FaqHistoryItem[] = historyRows
-    .reverse()
-    .map((m) => ({ role: m.direction === "IN" ? "user" : "assistant", text: m.text }));
+  // Filtered in code: a Prisma `not` on messageId would also drop our own
+  // replies, whose messageId is null.
+  const earlier = (
+    await prisma.conversationMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: "desc" },
+      take: HISTORY_TURNS + 10,
+      select: { direction: true, text: true, messageId: true, createdAt: true },
+    })
+  )
+    .filter((m) => m.messageId !== input.messageId)
+    .reverse();
+  const { pending, history } = splitPendingMessages(earlier, now);
+  const question = [...pending, input.messageText].join("\n");
 
   const tone = normalizeTone(settings.tone);
   const maxChars = Math.min(1000, Math.max(50, settings.maxReplyChars));
@@ -354,7 +394,7 @@ export async function handleFaqMessage(input: {
     system: FAQ_SYSTEM_PROMPT,
     context: buildFaqContextBlock(settings.knowledgeBase),
     user: buildFaqUserPrompt({
-      question: input.messageText.slice(0, 1000),
+      question: question.slice(0, 1000),
       history,
       tone,
       maxChars,

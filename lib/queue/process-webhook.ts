@@ -107,7 +107,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of messageEvents) {
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
-      await rememberInboundMessage(event.instagramAccountId, event.senderId);
+      await rememberInboundMessage(event.instagramAccountId, event.senderId, event.messageId);
 
       await queue.add(
         MESSAGE_JOB_NAME,
@@ -126,7 +126,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           jobId: `message_${event.instagramAccountId}_${Buffer.from(
             event.messageId
           ).toString("base64url")}`,
-          delay: humanDelays().dmMs,
+          delay: humanDelays().inboundDmMs,
         }
       );
 
