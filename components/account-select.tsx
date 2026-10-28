@@ -8,6 +8,7 @@ export interface AccountOption {
   username: string;
   instagramId: string;
   name?: string | null;
+  provider?: string;
 }
 
 interface AccountSelectProps {
@@ -39,7 +40,7 @@ export default function AccountSelect({
         {includeAll && <option value="all">{t("All accounts")}</option>}
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
-            @{account.username}
+            {account.provider === "FACEBOOK_PAGE" ? account.username : `@${account.username}`}
           </option>
         ))}
       </select>

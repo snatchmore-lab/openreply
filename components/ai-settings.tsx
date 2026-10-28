@@ -174,7 +174,7 @@ export function AiSettings({ canManage }: { canManage: boolean }) {
         >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              @{a.username}
+              {a.provider === "FACEBOOK_PAGE" ? a.username : `@${a.username}`}
             </option>
           ))}
           <option value={WORKSPACE}>{t("Workspace defaults")}</option>
