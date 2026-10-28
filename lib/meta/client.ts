@@ -921,6 +921,15 @@ export async function subscribeFacebookPage(pageId: string, pageToken: string): 
   return Boolean(result.success);
 }
 
+/** A Messenger customer's display name (User Profile API). */
+export async function getPageUserName(pageToken: string, userId: string): Promise<string | null> {
+  const url = new URL(`${facebookGraphBase()}/${userId}`);
+  url.searchParams.set("fields", "name");
+  url.searchParams.set("access_token", pageToken);
+  const result = await handleResponse<{ name?: string }>(await fetch(url.toString()));
+  return result.name?.trim() || null;
+}
+
 /** Messenger Send API: one image (by public URL) inside the 24-hour window. */
 export async function sendPageImage(
   pageToken: string,

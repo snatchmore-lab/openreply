@@ -21,6 +21,7 @@ import {
   sendDirectMessage,
 } from "@/lib/instagram/provider";
 import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
+import { getPageUserName } from "@/lib/meta/client";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
@@ -166,6 +167,21 @@ export function splitPendingMessages(
       .slice(-HISTORY_TURNS)
       .map((m) => ({ role: m.direction === "IN" ? "user" : "assistant", text: m.text })),
   };
+}
+
+async function fillPageSenderName(
+  account: Parameters<typeof createInstagramContext>[0],
+  conversationId: string,
+  senderId: string
+): Promise<void> {
+  try {
+    const context = await createInstagramContext(account, `name:${conversationId}`);
+    if (context.provider !== "FACEBOOK_PAGE") return;
+    const name = await getPageUserName(context.accessToken, senderId);
+    if (name) await prisma.conversation.update({ where: { id: conversationId }, data: { senderName: name } });
+  } catch {
+    // Cosmetic only; the inbox falls back to the id.
+  }
 }
 
 export function clampLineWidth(width: number | null | undefined): number {
@@ -339,6 +355,11 @@ export async function handleFaqMessage(input: {
       messageId: input.messageId,
     },
   });
+
+  // Facebook Page threads have no other place to show who is talking.
+  if (account.provider === "FACEBOOK_PAGE" && !conversation.senderName) {
+    await fillPageSenderName(account, conversation.id, input.senderId);
+  }
 
   // The person sent something newer: that message's job answers both.
   if (!(await isLatestInboundMessage(input.instagramAccountId, input.senderId, input.messageId))) {

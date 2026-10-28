@@ -13,6 +13,8 @@ export interface AiConversationItem {
   aiReplyCount: number;
   lastMessageAt: string | null;
   needsHumanAt: string | null;
+  /** The person's latest message, for lists that have no other preview. */
+  lastText: string | null;
 }
 
 /**
@@ -41,11 +43,18 @@ export async function GET(request: NextRequest) {
       aiReplyCount: true,
       lastMessageAt: true,
       needsHumanAt: true,
+      messages: {
+        where: { direction: "IN" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { text: true },
+      },
     },
   });
 
-  const data: AiConversationItem[] = rows.map((r) => ({
+  const data: AiConversationItem[] = rows.map(({ messages, ...r }) => ({
     ...r,
+    lastText: messages[0]?.text ?? null,
     lastMessageAt: r.lastMessageAt?.toISOString() ?? null,
     needsHumanAt: r.needsHumanAt?.toISOString() ?? null,
   }));

@@ -18,6 +18,7 @@ import { readCache, writeCache } from "@/lib/client-cache";
 import type { ConversationListItem } from "@/app/api/instagram/conversations/route";
 import type { ThreadMessage } from "@/app/api/instagram/conversations/[id]/route";
 import type { AiConversationItem } from "@/app/api/ai/conversations/route";
+import { PageAiThreads } from "@/components/page-ai-threads";
 
 const POLL_MS = 12_000;
 // Cached list/threads are shown instantly on revisit, then revalidated in the
@@ -131,6 +132,8 @@ export default function InboxPage() {
   }
 
   const activeAi = active?.contact.id ? aiThreads[active.contact.id] ?? null : null;
+  const isFacebookPage =
+    accounts.find((a) => a.id === selectedAccountId)?.provider === "FACEBOOK_PAGE";
 
   // Accounts for the selector; default to the first connected account. Uses the
   // lightweight accounts endpoint (one query) rather than the heavy dashboard
@@ -344,6 +347,16 @@ export default function InboxPage() {
         )}
       </div>
 
+      {isFacebookPage ? (
+        <PageAiThreads
+          threads={Object.values(aiThreads).sort((a, b) =>
+            (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "")
+          )}
+          busy={aiBusy}
+          onAction={(id, action) => void setAiThreadStatus(id, action)}
+          badge={AiStatusBadge}
+        />
+      ) : (
       <div className="grid h-[calc(100dvh-11rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
         {/* Conversation list. On mobile it takes the full pane and is hidden
             once a thread is open (ManyChat-style); on sm+ it is always shown. */}
@@ -520,6 +533,7 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

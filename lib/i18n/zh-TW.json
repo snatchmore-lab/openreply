@@ -411,6 +411,8 @@
   "Taken over": "已接手",
   "Take over": "接手",
   "Hand back to AI": "交回 AI",
+  "No conversations yet": "還沒有對話",
+  "Reply to Facebook Page customers in Messenger or Meta Business Suite. Here you can see each conversation's bot status and hand it back to the AI.": "Facebook 粉專的客人請在 Messenger 或 Meta Business Suite 回覆，這裡可以看每段對話的機器人狀態，並交回 AI",
   "You are handling this conversation; the bot stays silent.": "這段對話由你處理，機器人不會回覆。",
   "The bot could not answer and sent your handoff message.": "機器人答不了，已送出你的交接訊息。",
   "AI-written opener": "AI 改寫開場",
