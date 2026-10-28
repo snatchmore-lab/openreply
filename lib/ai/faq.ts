@@ -457,10 +457,14 @@ export async function handleFaqMessage(input: {
 
   const decision = decideFaqReply(result.result, settings);
 
-  // Already handed off: never repeat the handoff line or its email. Only a
-  // real answer (or a crisis reply) goes out.
+  // Already handed off: never send the handoff line twice in a row. If the
+  // bot has answered other things since, a new request that needs the owner
+  // (a booking, a photo) is handed off again, alert included.
   if (afterHandoff && decision.kind === "handoff") {
-    return { kind: "silent", reason: "not-ai-state" };
+    const lastReply = [...earlier].reverse().find((m) => m.direction !== "IN");
+    if (!lastReply || (lastReply.direction === "OUT_AI" && lastReply.text === decision.text)) {
+      return { kind: "silent", reason: "not-ai-state" };
+    }
   }
 
   // The person may have sent more while the model was writing; that newer
@@ -536,9 +540,7 @@ export async function handleFaqMessage(input: {
       data: {
         lastMessageAt: new Date(),
         aiReplyCount: { increment: 1 },
-        ...(needsHuman && !afterHandoff
-          ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() }
-          : {}),
+        ...(needsHuman ? { status: "NEEDS_HUMAN", needsHumanAt: new Date() } : {}),
       },
     }),
   ]);
@@ -592,7 +594,8 @@ export async function handleFaqMessage(input: {
       ? `【緊急】"${who ?? "有客人"}" 的訊息可能涉及自我傷害，請盡快親自關心`
       : `"${who ?? "有客人"}" 需要你回復\n${lineAlertSummary(question)}`;
     const sent = await pushThrottledLineMessage(
-      `${urgent ? "crisis" : "handoff"}-${conversation.id}`,
+      // Per message: a repeat handoff (never two in a row) alerts again.
+      `${urgent ? "crisis" : "handoff"}-${conversation.id}-${input.messageId}`,
       urgent ? 10 * 60 : 60 * 60,
       alert
     );

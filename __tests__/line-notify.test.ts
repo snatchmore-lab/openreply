@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
+// The first dynamic import of the FAQ module can take seconds on a cold run.
+vi.setConfig({ testTimeout: 30_000 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();

@@ -85,8 +85,12 @@ describe("answer after handoff", () => {
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "能力盤點免費喔" }));
   });
 
-  it("never repeats the handoff message or email in a handed-off thread", async () => {
+  it("never sends the handoff message twice in a row", async () => {
     setup("NEEDS_HUMAN", true);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date() },
+      { direction: "IN", text: "有框的是什麼", messageId: "m0", createdAt: new Date(Date.now() - 600_000) },
+    ]);
     mockComplete.mockResolvedValue(unsure);
 
     const out = await handleFaqMessage(msg);
@@ -94,6 +98,22 @@ describe("answer after handoff", () => {
     expect(out).toEqual({ kind: "silent", reason: "not-ai-state" });
     expect(mockSend).not.toHaveBeenCalled();
     expect(mockEmail).not.toHaveBeenCalled();
+  });
+
+  it("hands off again when the bot has answered other things since", async () => {
+    setup("NEEDS_HUMAN", true);
+    // Newest first, as the query returns them.
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "有框是玻璃外面有框架的款式", messageId: null, createdAt: new Date() },
+      { direction: "IN", text: "有框的是什麼", messageId: "m1", createdAt: new Date(Date.now() - 300_000) },
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date(Date.now() - 600_000) },
+    ]);
+    mockComplete.mockResolvedValue(unsure);
+
+    const out = await handleFaqMessage({ ...msg, messageText: "可以預約現場嗎" });
+
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "轉給本人" }));
   });
 
   it("stays silent after a handoff when the setting is off", async () => {
