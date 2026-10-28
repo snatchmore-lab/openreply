@@ -566,13 +566,13 @@ export async function handleFaqMessage(input: {
       .then((c) => c?.senderName)
       .catch(() => null);
     const urgent = decision.kind === "crisis";
-    await pushThrottledLineMessage(`${urgent ? "crisis" : "handoff"}-${conversation.id}`, urgent ? 10 * 60 : 60 * 60, [
+    await pushThrottledLineMessage(
+      `${urgent ? "crisis" : "handoff"}-${conversation.id}`,
+      urgent ? 10 * 60 : 60 * 60,
       urgent
-        ? `【緊急】${account.username}：${who ?? "有人"}的訊息可能涉及自我傷害，請盡快親自關心`
-        : `【${account.username}】${who ?? "有客人"}需要你回覆`,
-      "",
-      question.slice(0, 300),
-    ].join("\n"));
+        ? `【緊急】"${who ?? "有客人"}" 的訊息可能涉及自我傷害，請盡快親自關心`
+        : `"${who ?? "有客人"}" 需要你回復`
+    );
   }
 
   return decision.kind === "answered"
