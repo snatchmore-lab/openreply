@@ -22,6 +22,7 @@ import {
 } from "@/lib/instagram/provider";
 import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
 import { getPageUserName } from "@/lib/meta/client";
+import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
@@ -557,6 +558,21 @@ export async function handleFaqMessage(input: {
         "（這封信由 OpenReply 自動寄出）",
       ].join("\n"),
     }).catch(() => {});
+  }
+
+  if (decision.kind !== "answered" && lineNotifyEnabledFor(account.instagramId)) {
+    const who = await prisma.conversation
+      .findUnique({ where: { id: conversation.id }, select: { senderName: true } })
+      .then((c) => c?.senderName)
+      .catch(() => null);
+    const urgent = decision.kind === "crisis";
+    await pushThrottledLineMessage(`${urgent ? "crisis" : "handoff"}-${conversation.id}`, urgent ? 10 * 60 : 60 * 60, [
+      urgent
+        ? `【緊急】${account.username}：${who ?? "有人"}的訊息可能涉及自我傷害，請盡快親自關心`
+        : `【${account.username}】${who ?? "有客人"}需要你回覆`,
+      "",
+      question.slice(0, 300),
+    ].join("\n"));
   }
 
   return decision.kind === "answered"
