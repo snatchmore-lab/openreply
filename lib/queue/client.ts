@@ -83,15 +83,26 @@ export interface ProcessMessageJob {
   senderId: string;
 }
 
+// One hour after a person tapped an ad button: if they have said nothing
+// else, the FAQ bot sends the account's follow-up line once.
+export interface FaqNudgeJob {
+  accountConnectionId?: string;
+  instagramAccountId: string; // instagramId, as in the webhook
+  conversationId: string;
+  messageId: string;
+}
+
 export type DmQueueJob =
   | ProcessCommentJob
   | ProcessPostbackJob
   | ProcessFollowUpJob
-  | ProcessMessageJob;
+  | ProcessMessageJob
+  | FaqNudgeJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const FOLLOWUP_JOB_NAME = "process-followup";
 export const MESSAGE_JOB_NAME = "process-message";
+export const FAQ_NUDGE_JOB_NAME = "faq-nudge";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

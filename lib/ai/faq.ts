@@ -23,6 +23,7 @@ import {
 import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
 import { getPageUserName } from "@/lib/meta/client";
 import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
+import { scheduleNudge } from "./nudge";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
@@ -373,6 +374,14 @@ export async function handleFaqMessage(input: {
   if (account.provider === "FACEBOOK_PAGE" && !conversation.senderName) {
     await fillPageSenderName(account, conversation.id, input.senderId);
   }
+
+  await scheduleNudge({
+    knowledgeBase: settings.knowledgeBase,
+    instagramAccountId: input.instagramAccountId,
+    conversationId: conversation.id,
+    messageId: input.messageId,
+    messageText: input.messageText,
+  });
 
   // The person sent something newer: that message's job answers both.
   if (!(await isLatestInboundMessage(input.instagramAccountId, input.senderId, input.messageId))) {
