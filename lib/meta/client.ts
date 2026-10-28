@@ -853,18 +853,18 @@ export function getFacebookAppId(): string {
   return process.env.FACEBOOK_APP_ID || "1440737331340309";
 }
 
-export const FACEBOOK_PAGE_SCOPES = [
-  "pages_show_list",
-  "pages_messaging",
-  "pages_manage_metadata",
-  "business_management",
-].join(",");
+/** Facebook Login for Business configuration (Pages + Messenger permissions). */
+export function getFacebookLoginConfigId(): string {
+  return process.env.FACEBOOK_LOGIN_CONFIG_ID || "1086499857525329";
+}
 
 export function getFacebookAuthorizationUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
     client_id: getFacebookAppId(),
     redirect_uri: redirectUri,
-    scope: FACEBOOK_PAGE_SCOPES,
+    // Login for Business apps reject a bare scope list; the configuration
+    // carries the permissions instead.
+    config_id: getFacebookLoginConfigId(),
     response_type: "code",
     state,
   });

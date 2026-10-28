@@ -46,7 +46,7 @@ describe("Facebook Page messaging", () => {
   it("asks Facebook Login for the Page messaging permissions", () => {
     const url = new URL(getFacebookAuthorizationUrl("https://x.test/cb", "state1"));
     expect(url.hostname).toBe("www.facebook.com");
-    expect(url.searchParams.get("scope")).toContain("pages_messaging");
+    expect(url.searchParams.get("config_id")).toBe("1086499857525329");
     expect(url.searchParams.get("redirect_uri")).toBe("https://x.test/cb");
   });
 });
