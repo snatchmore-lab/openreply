@@ -30,3 +30,12 @@ describe("LINE notify", () => {
     expect(JSON.parse(init.body)).toEqual({ to: "U1", messages: [{ type: "text", text: "hi" }] });
   });
 });
+
+describe("LINE alert summary", () => {
+  it("says what the customer sent, photos in words", async () => {
+    const { lineAlertSummary } = await import("@/lib/ai/faq");
+    expect(lineAlertSummary("可以算便宜一點嗎")).toBe("可以算便宜一點嗎");
+    expect(lineAlertSummary("(客人傳了照片)\n這樣可以做嗎")).toBe("傳了照片／這樣可以做嗎");
+    expect(lineAlertSummary("長".repeat(80))).toBe(`${"長".repeat(60)}…`);
+  });
+});

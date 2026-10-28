@@ -185,6 +185,18 @@ async function fillPageSenderName(
   }
 }
 
+/** One short line saying what the person sent, for the LINE alert. */
+export function lineAlertSummary(question: string): string {
+  const text = question
+    .replace(/\(客人傳了照片\)/g, "傳了照片")
+    .replace(/\(客人傳了影片\)/g, "傳了影片")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join("／");
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+}
+
 export function clampLineWidth(width: number | null | undefined): number {
   return Math.min(30, Math.max(8, Math.round(width ?? MAX_LINE_WIDTH)));
 }
@@ -571,7 +583,7 @@ export async function handleFaqMessage(input: {
       urgent ? 10 * 60 : 60 * 60,
       urgent
         ? `【緊急】"${who ?? "有客人"}" 的訊息可能涉及自我傷害，請盡快親自關心`
-        : `"${who ?? "有客人"}" 需要你回復`
+        : `"${who ?? "有客人"}" 需要你回復\n${lineAlertSummary(question)}`
     );
   }
 
