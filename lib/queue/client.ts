@@ -92,17 +92,28 @@ export interface FaqNudgeJob {
   messageId: string;
 }
 
+// One hour after a handoff alert: remind the owner on LINE if still unanswered.
+export interface LineRemindJob {
+  accountConnectionId?: string;
+  instagramAccountId?: string;
+  conversationId: string;
+  handoffAt: string;
+  text: string;
+}
+
 export type DmQueueJob =
   | ProcessCommentJob
   | ProcessPostbackJob
   | ProcessFollowUpJob
   | ProcessMessageJob
-  | FaqNudgeJob;
+  | FaqNudgeJob
+  | LineRemindJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const FOLLOWUP_JOB_NAME = "process-followup";
 export const MESSAGE_JOB_NAME = "process-message";
 export const FAQ_NUDGE_JOB_NAME = "faq-nudge";
+export const LINE_REMIND_JOB_NAME = "line-remind";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

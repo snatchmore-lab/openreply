@@ -12,12 +12,14 @@ import {
   getRedisConnection,
   MESSAGE_JOB_NAME,
   FAQ_NUDGE_JOB_NAME,
+  LINE_REMIND_JOB_NAME,
   POSTBACK_JOB_NAME,
   FOLLOWUP_JOB_NAME,
   type DmQueueJob,
   type ProcessCommentJob,
   type ProcessMessageJob,
   type FaqNudgeJob,
+  type LineRemindJob,
   type ProcessPostbackJob,
   type ProcessFollowUpJob,
 } from "./client";
@@ -45,6 +47,7 @@ import { aiMatch, type AiMatchDecision } from "@/lib/ai/match";
 import { composeDmWithOpening, generateOpening } from "@/lib/ai/opening";
 import { handleFaqMessage } from "@/lib/ai/faq";
 import { handleNudge } from "@/lib/ai/nudge";
+import { handleLineReminder } from "@/lib/notify/line-reminder";
 import { varyPublicReply } from "@/lib/ai/vary";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { reserveDMSlot, releaseDMSlot, reservePublicReplySlot } from "@/lib/utils/rate-limiter";
@@ -1805,6 +1808,10 @@ async function dispatchJob(job: Job<DmQueueJob>): Promise<void> {
   }
   if (job.name === MESSAGE_JOB_NAME) {
     return processMessage(job as Job<ProcessMessageJob>);
+  }
+  if (job.name === LINE_REMIND_JOB_NAME) {
+    await handleLineReminder(job.data as LineRemindJob);
+    return;
   }
   if (job.name === FAQ_NUDGE_JOB_NAME) {
     const outcome = await handleNudge(job.data as FaqNudgeJob);

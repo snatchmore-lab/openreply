@@ -23,6 +23,7 @@ import {
 import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
 import { getPageUserName } from "@/lib/meta/client";
 import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
+import { scheduleLineReminder } from "@/lib/notify/line-reminder";
 import { scheduleNudge } from "./nudge";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
@@ -587,13 +588,16 @@ export async function handleFaqMessage(input: {
       .then((c) => c?.senderName)
       .catch(() => null);
     const urgent = decision.kind === "crisis";
-    await pushThrottledLineMessage(
+    const alert = urgent
+      ? `【緊急】"${who ?? "有客人"}" 的訊息可能涉及自我傷害，請盡快親自關心`
+      : `"${who ?? "有客人"}" 需要你回復\n${lineAlertSummary(question)}`;
+    const sent = await pushThrottledLineMessage(
       `${urgent ? "crisis" : "handoff"}-${conversation.id}`,
       urgent ? 10 * 60 : 60 * 60,
-      urgent
-        ? `【緊急】"${who ?? "有客人"}" 的訊息可能涉及自我傷害，請盡快親自關心`
-        : `"${who ?? "有客人"}" 需要你回復\n${lineAlertSummary(question)}`
+      alert
     );
+    // Still unanswered an hour later: one more nudge, then never again.
+    if (sent) await scheduleLineReminder(conversation.id, alert);
   }
 
   return decision.kind === "answered"

@@ -121,6 +121,7 @@ vi.mock("@/lib/queue/client", () => ({
   FOLLOWUP_JOB_NAME: "process-followup",
   MESSAGE_JOB_NAME: "process-message",
   FAQ_NUDGE_JOB_NAME: "faq-nudge",
+  LINE_REMIND_JOB_NAME: "line-remind",
 }));
 
 vi.mock("bullmq", () => {
