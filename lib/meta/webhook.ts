@@ -83,6 +83,7 @@ interface WebhookEntry {
       is_deleted?: boolean;
       is_unsupported?: boolean;
       attachments?: Array<{ type?: string }>;
+      sticker_id?: number;
     };
   }>;
 }
@@ -244,6 +245,23 @@ export function parsePostbackEvents(
  * the worker never sees them — an echo would otherwise let an autoreply
  * containing its own keyword trigger itself.
  */
+/**
+ * A photo or video sent to a Facebook Page has no text. It still matters to
+ * the FAQ bot (the owner wants customer photos handed to him), so it comes
+ * through as a placeholder line. Instagram keeps ignoring media; stickers and
+ * likes are not photos.
+ */
+function pageMediaPlaceholder(
+  object: string | undefined,
+  message: { attachments?: Array<{ type?: string }>; sticker_id?: number }
+): string | undefined {
+  if (object !== "page" || message.sticker_id) return undefined;
+  const types = (message.attachments ?? []).map((a) => a.type);
+  if (types.includes("image")) return "(客人傳了照片)";
+  if (types.includes("video")) return "(客人傳了影片)";
+  return undefined;
+}
+
 export function parseMessageEvents(
   payload: WebhookPayload
 ): WebhookMessageEvent[] {
@@ -260,7 +278,7 @@ export function parseMessageEvents(
         continue;
       }
 
-      const text = message.text?.trim();
+      const text = message.text?.trim() || pageMediaPlaceholder(payload.object, message);
       const messageId = message.mid;
       const senderId = messaging.sender?.id;
       const accountId = entry.id ?? messaging.recipient?.id;

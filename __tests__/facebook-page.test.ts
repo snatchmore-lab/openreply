@@ -50,3 +50,21 @@ describe("Facebook Page messaging", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("https://x.test/cb");
   });
 });
+
+describe("Page photo messages", () => {
+  const event = (message: Record<string, unknown>, object = "page") => ({
+    object,
+    entry: [{ id: "page1", time: 0, messaging: [{ sender: { id: "u1" }, recipient: { id: "page1" }, message: { mid: "m1", ...message } }] }],
+  });
+
+  it("turns a customer photo into a placeholder line", async () => {
+    const { parseMessageEvents } = await import("@/lib/meta/webhook");
+    expect(parseMessageEvents(event({ attachments: [{ type: "image" }] }))[0].messageText).toBe("(客人傳了照片)");
+  });
+
+  it("ignores stickers and Instagram media", async () => {
+    const { parseMessageEvents } = await import("@/lib/meta/webhook");
+    expect(parseMessageEvents(event({ attachments: [{ type: "image" }], sticker_id: 369239263222822 }))).toEqual([]);
+    expect(parseMessageEvents(event({ attachments: [{ type: "image" }] }, "instagram"))).toEqual([]);
+  });
+});
