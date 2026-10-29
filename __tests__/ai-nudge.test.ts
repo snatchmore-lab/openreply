@@ -50,3 +50,31 @@ describe("ad follow-up", () => {
     expect(shouldNudge({ status: "AI", messages: [old] }, "m1", config, now)).toBe(false);
   });
 });
+
+describe("quiet follow-up", () => {
+  it("reads the follow-up line", async () => {
+    const { parseQuietFollowUp } = await import("@/lib/ai/nudge");
+    expect(parseQuietFollowUp("[對話追蹤訊息] 還有什麼可以幫您的嗎😊\n[對話追蹤訊息] 第二行")).toBe("還有什麼可以幫您的嗎😊\n第二行");
+    expect(parseQuietFollowUp("沒有設定")).toBeNull();
+  });
+
+  it("follows up once when the bot answered last and the person went quiet", async () => {
+    const { shouldFollowUpQuiet } = await import("@/lib/ai/nudge");
+    const text = "還有什麼可以幫您的嗎😊";
+    const typed = { direction: "IN", text: "我在參考一下", messageId: "q1", createdAt: ago(23 * 60) };
+    const bot = { direction: "OUT_AI", text: "不客氣唷", messageId: null, createdAt: ago(23 * 60 - 1) };
+    expect(shouldFollowUpQuiet({ status: "AI", messages: [typed, bot] }, "q1", text, now)).toBe(true);
+    const sent = { direction: "OUT_AI", text, messageId: null, createdAt: ago(1) };
+    expect(shouldFollowUpQuiet({ status: "AI", messages: [typed, bot, sent] }, "q1", text, now)).toBe(false);
+  });
+
+  it("skips handed-off threads, unanswered messages, and anything past 24 hours", async () => {
+    const { shouldFollowUpQuiet } = await import("@/lib/ai/nudge");
+    const text = "還有什麼可以幫您的嗎😊";
+    const typed = { direction: "IN", text: "好", messageId: "q1", createdAt: ago(23 * 60) };
+    const bot = { direction: "OUT_AI", text: "好的", messageId: null, createdAt: ago(23 * 60 - 1) };
+    expect(shouldFollowUpQuiet({ status: "NEEDS_HUMAN", messages: [typed, bot] }, "q1", text, now)).toBe(false);
+    expect(shouldFollowUpQuiet({ status: "AI", messages: [typed] }, "q1", text, now)).toBe(false);
+    expect(shouldFollowUpQuiet({ status: "AI", messages: [{ ...typed, createdAt: ago(25 * 60) }, bot] }, "q1", text, now)).toBe(false);
+  });
+});

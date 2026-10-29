@@ -90,6 +90,8 @@ export interface FaqNudgeJob {
   instagramAccountId: string; // instagramId, as in the webhook
   conversationId: string;
   messageId: string;
+  /** "ad": silent ad-button tap (default). "quiet": went quiet after the bot answered. */
+  kind?: "ad" | "quiet";
 }
 
 // One hour after a handoff alert: remind the owner on LINE if still unanswered.
