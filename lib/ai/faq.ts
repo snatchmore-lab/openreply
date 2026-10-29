@@ -275,12 +275,47 @@ export function decideFaqReply(
  * creates nothing. The human's text is kept so the bot's later context and
  * the dashboard history include it.
  */
+/** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
+const META_AUTOMATION_PHRASES = ["來向你打聲招呼"];
+
+/**
+ * Texts Meta sends by itself (ad template follow-ups): the default phrase,
+ * plus any the owner lists in the knowledge base as "[Meta自動訊息] phrase".
+ */
+export function isMetaAutomationText(text: string, knowledgeBase: string): boolean {
+  const listed = knowledgeBase
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("[Meta自動訊息]"))
+    .map((line) => line.slice("[Meta自動訊息]".length).trim())
+    .filter(Boolean);
+  return [...META_AUTOMATION_PHRASES, ...listed].some((phrase) => text.includes(phrase));
+}
+
+async function isMetaAutomationEcho(instagramId: string, text: string): Promise<boolean> {
+  if (!text) return false;
+  try {
+    const account = await prisma.instagramAccount.findUnique({
+      where: { instagramId },
+      select: { aiSettings: { select: { knowledgeBase: true } }, workspace: { select: { aiSettings: { select: { knowledgeBase: true } } } } },
+    });
+    const knowledgeBase = account?.aiSettings?.knowledgeBase ?? account?.workspace.aiSettings?.knowledgeBase ?? "";
+    return isMetaAutomationText(text, knowledgeBase);
+  } catch {
+    return isMetaAutomationText(text, "");
+  }
+}
+
 export async function handleHumanEcho(input: {
   instagramAccountId: string; // IG user id (instagramId), as in the webhook
   recipientId: string;
   messageId: string;
   messageText: string;
-}): Promise<"taken-over" | "already-human" | "no-thread"> {
+}): Promise<"taken-over" | "already-human" | "no-thread" | "automation"> {
+  // Meta's own follow-up from the ad template can land in a thread at any
+  // time; it is not the owner typing.
+  if (await isMetaAutomationEcho(input.instagramAccountId, input.messageText)) return "automation";
+
   const conversation = await prisma.conversation.findFirst({
     where: {
       senderId: input.recipientId,

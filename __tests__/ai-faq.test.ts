@@ -240,3 +240,12 @@ describe("fixedReply field", () => {
     expect(decideFaqReply({ answer: "", confident: false, fixedReply: "不存在" }, s).kind).toBe("handoff");
   });
 });
+
+describe("Meta's own follow-up echoes", () => {
+  it("recognises the default template follow-up and owner-listed phrases", async () => {
+    const { isMetaAutomationText } = await import("@/lib/ai/faq");
+    expect(isMetaAutomationText("王道明，你好！來向你打聲招呼，你有任何問題想問嗎？", "")).toBe(true);
+    expect(isMetaAutomationText("Hello~ 想幫你家浴室做哪些改變呢", "[Meta自動訊息] 想幫你家浴室做哪些改變呢")).toBe(true);
+    expect(isMetaAutomationText("明天下午兩點方便過去嗎", "")).toBe(false);
+  });
+});
