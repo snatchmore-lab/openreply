@@ -220,3 +220,11 @@ describe("fixed replies", () => {
     expect(decideFaqReply({ answer: "{{不存在}}", confident: true }, s).kind).toBe("handoff");
   });
 });
+
+describe("fixed replies with spacing", () => {
+  it("keeps a blank line the owner put inside the reply", async () => {
+    const { knowledgeBaseFixedReplies } = await import("@/lib/ai/faq");
+    const kb = ["[固定回覆:門市] 目前門市在雲林斗六~", "[固定回覆:門市]", "[固定回覆:門市] 想看樣式的話"].join("\n");
+    expect(knowledgeBaseFixedReplies(kb).get("門市")).toBe("目前門市在雲林斗六~\n\n想看樣式的話");
+  });
+});

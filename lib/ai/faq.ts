@@ -228,7 +228,8 @@ export function knowledgeBaseFixedReplies(knowledgeBase: string): Map<string, st
     const name = match[1].trim();
     replies.set(name, [...(replies.get(name) ?? []), match[2].trim()]);
   }
-  return new Map([...replies].map(([name, lines]) => [name, lines.filter(Boolean).join("\n")]));
+  // Blank lines inside a reply are the owner's spacing; keep them.
+  return new Map([...replies].map(([name, lines]) => [name, lines.join("\n").replace(/^\n+|\n+$/g, "")]));
 }
 
 export function decideFaqReply(
