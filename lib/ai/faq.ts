@@ -19,12 +19,15 @@ import {
   hasInstagramCredentials,
   sendDirectImage,
   sendDirectMessage,
+  PermissionError,
+  TokenExpiredError,
 } from "@/lib/instagram/provider";
 import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
 import { getPageUserName } from "@/lib/meta/client";
 import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
 import { scheduleLineReminder } from "@/lib/notify/line-reminder";
 import { scheduleNudge } from "./nudge";
+import { reportProblem, resolveProblem } from "@/lib/notify/owner-line";
 import { completeJson } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
@@ -534,8 +537,17 @@ export async function handleFaqMessage(input: {
       "[FAQ bot] Failed to send reply:",
       error instanceof Error ? error.message : error
     );
+    // Account-wide problems (authorization gone) need the owner; a single
+    // customer's failed send does not.
+    if (error instanceof TokenExpiredError || error instanceof PermissionError) {
+      await reportProblem(
+        `send-${account.id}`,
+        `${account.username}：機器人沒辦法回覆客人${String.fromCharCode(10)}原因：粉專或帳號的授權失效了，請到 OpenReply 設定頁重新連接`
+      ).catch(() => {});
+    }
     return { kind: "silent", reason: "send-failed" };
   }
+  await resolveProblem(`send-${account.id}`, `${account.username}：機器人已恢復正常回覆`).catch(() => {});
 
   // Photos follow the text. Each one is a DM against the hourly budget; a
   // failed or over-budget photo is dropped, the text already went out.

@@ -4,6 +4,8 @@ import { decryptToken, encryptToken } from "@/lib/meta/oauth";
 import { refreshLongLivedToken } from "@/lib/meta/client";
 import { getWorkerHealth } from "@/lib/ops/worker-health";
 import { alertWorkerDown } from "@/lib/notify/alerts";
+import { reportProblem, resolveProblem } from "@/lib/notify/owner-line";
+import { runDailyOwnerChecks } from "@/lib/notify/daily-checks";
 
 const DAYS_BEFORE_EXPIRY = 10;
 
@@ -31,10 +33,17 @@ export async function GET(request: NextRequest) {
       for (const { workspaceId } of workspaces) {
         await alertWorkerDown(workspaceId, worker.heartbeat?.checkedAt ?? null);
       }
+    } else {
+      await resolveProblem("worker", "自動回覆已恢復運作（worker 正常）");
     }
   } catch (error) {
     console.error("[cron] Worker watchdog failed:", error instanceof Error ? error.message : error);
   }
+
+  // Bills and credit coming due: one LINE reminder each.
+  await runDailyOwnerChecks().catch((error: unknown) => {
+    console.error("[cron] Owner checks failed:", error instanceof Error ? error.message : error);
+  });
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() + DAYS_BEFORE_EXPIRY);
@@ -94,6 +103,7 @@ export async function GET(request: NextRequest) {
         username: account.username,
         status: "refreshed",
       });
+      await resolveProblem(`token-${account.id}`, `@${account.username} 的授權已更新，恢復正常`).catch(() => {});
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       await prisma.operationalEvent.create({
@@ -115,6 +125,10 @@ export async function GET(request: NextRequest) {
         status: "failed",
         error: errorMessage,
       });
+      await reportProblem(
+        `token-${account.id}`,
+        `@${account.username} 的 Instagram 授權更新失敗，到期後自動回覆會停止${String.fromCharCode(10)}請到 OpenReply 設定頁重新連接這個帳號`
+      ).catch(() => {});
     }
   }
 

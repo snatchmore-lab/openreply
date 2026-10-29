@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { Prisma } from "@/app/generated/prisma/client";
-import { alertAiUnavailable } from "@/lib/notify/alerts";
+import { alertAiUnavailable, resolveAiProblems } from "@/lib/notify/alerts";
 
 export const DEFAULT_AI_MODEL = "claude-haiku-5-5";
 export const DEFAULT_DAILY_CALL_LIMIT = 2000;
@@ -200,6 +200,7 @@ export async function completeJson<T>(
       cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
     };
     await recordTokens(options.workspaceId, options.feature, usage);
+    await resolveAiProblems().catch(() => {});
 
     if (response.stop_reason === "refusal" || response.parsed_output == null) {
       return {

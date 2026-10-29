@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/env";
 import { sendThrottledNotifyEmail } from "./email";
+import { reportProblem, resolveProblem } from "./owner-line";
 
 const ONE_DAY = 24 * 60 * 60;
 
@@ -21,6 +22,14 @@ export async function alertAiUnavailable(
   workspaceId: string,
   kind: "credit" | "key"
 ): Promise<void> {
+  await reportProblem(
+    `ai-${kind}`,
+    kind === "credit"
+      ? `AI 額度用完了，機器人暫停自動回覆
+請到 console.anthropic.com 的 Billing 儲值，儲值後會自動恢復`
+      : `AI 金鑰失效，機器人暫停自動回覆
+請到 console.anthropic.com 建新金鑰，更新 Railway 和 Vercel 的 AI_API_KEY`
+  ).catch(() => {});
   const to = await ownerEmail(workspaceId);
   if (!to) return;
   const subject =
@@ -50,10 +59,22 @@ export async function alertAiUnavailable(
   });
 }
 
+/** An AI call worked: report recovery once if AI had been down. */
+export async function resolveAiProblems(): Promise<void> {
+  await resolveProblem("ai-credit", "AI 額度已恢復，機器人恢復自動回覆");
+  await resolveProblem("ai-key", "AI 金鑰已恢復，機器人恢復自動回覆");
+}
+
 export async function alertWorkerDown(
   workspaceId: string,
   lastSeen: string | null
 ): Promise<void> {
+  await reportProblem(
+    "worker",
+    `自動回覆停止運作了（Railway 上的 worker 沒有回應）
+${lastSeen ? `最後回報：${lastSeen}
+` : ""}最常見原因：Railway 額度用完或付款失效，請登入 railway.com 查看`
+  ).catch(() => {});
   const to = await ownerEmail(workspaceId);
   if (!to) return;
   await sendThrottledNotifyEmail(`worker-down-${workspaceId}`, ONE_DAY, {
