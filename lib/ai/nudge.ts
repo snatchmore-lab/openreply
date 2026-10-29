@@ -26,8 +26,6 @@ import { getDMQueue, FAQ_NUDGE_JOB_NAME, type FaqNudgeJob } from "@/lib/queue/cl
 import { createInstagramContext, hasInstagramCredentials, sendDirectMessage } from "@/lib/instagram/provider";
 import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
 import { completeJson } from "./service";
-import { buildFaqContextBlock } from "./prompts";
-import { capByLines, formatAiText } from "./text";
 
 export const NUDGE_DELAY_MS = 60 * 60 * 1000;
 export const QUIET_DELAY_MS = 23 * 60 * 60 * 1000;
@@ -157,7 +155,6 @@ export async function handleNudge(job: FaqNudgeJob, now = new Date()): Promise<N
         knowledgeBase: settings.knowledgeBase,
         messages: conversation.messages,
         fallback: fallback!,
-        lineWidth: settings.maxLineWidth,
       });
 
   const slot = await reserveDMSlot(account.instagramId);
@@ -189,28 +186,29 @@ export async function handleNudge(job: FaqNudgeJob, now = new Date()): Promise<N
   return "sent";
 }
 
-export const QUIET_SYSTEM_PROMPT = `You write ONE short follow-up Messenger message for a bathroom renovation business (御本衛浴). The customer chatted yesterday, got answers, then went quiet. Write it in the owner's voice described in the knowledge base (friendly, casual, Traditional Chinese, 台灣用語, calls the customer 您).
+/** The [對話追蹤範本] lines with a {主題} slot, or null when not set. */
+export function parseQuietTemplate(knowledgeBase: string): string | null {
+  const text = [...taggedGroups(knowledgeBase, "對話追蹤範本").values()].flat().filter(Boolean).join("\n");
+  return text.includes("{主題}") ? text : null;
+}
 
-Rules:
-- Mention what this customer actually talked about (the style, the area, the question they asked), so it reads like the owner remembers them. Use only things the customer or the earlier replies said.
-- Never add a price, a date, a promise, or a fact that is not already in the conversation or the knowledge base.
-- Exactly 2 or 3 short lines, at most 15 Chinese characters each, one phrase per line. Start like the owner does (for example "Hello~"). At most one emoji. Never use 「。」.
-- End by gently offering the next step: asking if they have other questions, or offering to book 師傅免費到府丈量討論 (say that phrase in full).
-- Do not say you are following up because they went quiet, and do not mention yesterday's exact time.
-- Never say what 師傅 or anyone has done, is doing, or will do (no 已經幫您排, 會再回覆, 還在確認, 有記下來). Only mention what the customer asked about, then ask or offer.
-- If the conversation gives you nothing specific to mention, set ok=false.`;
+export const QUIET_TOPIC_PROMPT = `From the conversation, name what the customer asked about, as a short Traditional Chinese noun phrase that fits after "您詢問的" (for example 白框三橫拉, 無框內推門, 浴室整修, 淋浴拉門價格, 玻璃隔屏). Use the customer's own words where possible. At most 10 Chinese characters. No price, no date, no place name, no verb, no punctuation. If there is nothing specific, set ok=false.`;
 
-export const QuietOutput = z.object({ message: z.string(), ok: z.boolean() });
+export const QuietTopic = z.object({ topic: z.string(), ok: z.boolean() });
 
-/** The model's personalised line, or the owner's fallback when it cannot write one. */
+/**
+ * The owner's template with the topic filled in by the model, or the
+ * owner's fallback line when there is no template or no usable topic.
+ */
 async function writeQuietFollowUp(input: {
   workspaceId: string;
   conversationId: string;
   knowledgeBase: string;
   messages: Message[];
   fallback: string;
-  lineWidth?: number;
 }): Promise<string> {
+  const template = parseQuietTemplate(input.knowledgeBase);
+  if (!template) return input.fallback;
   const transcript = input.messages
     .slice(-12)
     .map((m) => `${m.direction === "IN" ? "客人" : m.direction === "OUT_HUMAN" ? "師傅" : "回覆"}：${m.text.replace(/\n/g, " ")}`)
@@ -218,29 +216,25 @@ async function writeQuietFollowUp(input: {
   const result = await completeJson({
     feature: "faq",
     workspaceId: input.workspaceId,
-    system: QUIET_SYSTEM_PROMPT,
-    context: buildFaqContextBlock(input.knowledgeBase),
-    user: `Conversation (oldest first):\n${transcript}\n\nWrite the follow-up.`,
-    schema: QuietOutput,
-    cacheScope: [input.conversationId, "quiet-nudge"],
-    maxTokens: 1000,
+    system: QUIET_TOPIC_PROMPT,
+    user: `Conversation (oldest first):\n${transcript}`,
+    schema: QuietTopic,
+    cacheScope: [input.conversationId, "quiet-topic"],
+    maxTokens: 500,
   });
   if (!result.ok || !result.result.ok) return input.fallback;
-  return safeQuietText(result.result.message, transcript, input.lineWidth) ?? input.fallback;
+  const topic = safeTopic(result.result.topic, transcript);
+  return topic ? template.replace("{主題}", topic) : input.fallback;
 }
 
-/**
- * Clean the model's line, or null when it should not go out: empty, too long,
- * or carrying a number (a price, a date) the conversation never mentioned.
- */
-export function safeQuietText(raw: string, transcript: string, lineWidth?: number): string | null {
-  const text = capByLines(formatAiText(raw.replace(/。/g, "").trim(), lineWidth), 120);
-  if (!text || text.split("\n").length > 4) return null;
-  // Claims about progress the owner never made ("已經幫您排囉", "師傅會再回覆").
-  if (/師傅(會|還在|已經|正在)|已經幫|幫您排|確認中|記下來/.test(text)) return null;
-  const numbers = text.match(/\d[\d,.]*/g) ?? [];
+/** A short topic the template can take, or null: too long, punctuated, or with an invented number. */
+export function safeTopic(raw: string, transcript: string): string | null {
+  const topic = raw.trim().replace(/^您?詢問的/, "").replace(/^[「『"]|[」』"]$/g, "").trim();
+  if (!topic || [...topic].length > 12) return null;
+  if (/[。，、！？!?,.\n]/.test(topic)) return null;
+  const numbers = topic.match(/\d[\d,.]*/g) ?? [];
   if (numbers.some((n) => !transcript.includes(n))) return null;
-  return text;
+  return topic;
 }
 
 /** The owner's "we don't serve your area" fixed replies: no follow-up after those. */

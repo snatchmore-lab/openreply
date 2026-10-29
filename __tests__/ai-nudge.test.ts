@@ -94,22 +94,8 @@ describe("follow-up variants and personalised text", () => {
     expect(shouldNudge({ status: "AI", messages: [tap, sent] }, "m1", c, now)).toBe(false);
   });
 
-  it("drops a personalised line that invents a number", async () => {
-    const { safeQuietText } = await import("@/lib/ai/nudge");
-    const transcript = "客人：白框PS板三片式多少\n回覆：價格在8500左右~";
-    expect(safeQuietText("Hello~ 白框PS板三片式\n還有想了解的嗎😊", transcript, 17)).toContain("白框PS板三片式");
-    expect(safeQuietText("Hello~ 現在只要7999唷", transcript, 17)).toBeNull();
-    expect(safeQuietText("Hello~ 8500的款式還有興趣嗎", transcript, 17)).not.toBeNull();
-  });
 });
 
-describe("personalised follow-up guard", () => {
-  it("drops lines that claim progress the owner never made", async () => {
-    const { safeQuietText } = await import("@/lib/ai/nudge");
-    expect(safeQuietText("Hello~ 週末的時間\n我已經幫您排囉", "客人：週末可以嗎", 17)).toBeNull();
-    expect(safeQuietText("Hello~ L型無框內推門\n師傅還在確認中", "客人：L型", 17)).toBeNull();
-  });
-});
 
 describe("quiet follow-up and service area", () => {
   it("skips customers already told we do not serve their area", async () => {
@@ -117,5 +103,22 @@ describe("quiet follow-up and service area", () => {
     const typed = { direction: "IN", text: "高雄鳳山", messageId: "q1", createdAt: ago(23 * 60) };
     const no = { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹", messageId: null, createdAt: ago(23 * 60 - 1) };
     expect(shouldFollowUpQuiet({ status: "AI", messages: [typed, no] }, "q1", "fallback", now, ["哇…目前還沒有服務到那邊🥹"])).toBe(false);
+  });
+});
+
+describe("quiet follow-up template", () => {
+  it("fills the owner's template with a short topic", async () => {
+    const { parseQuietTemplate, safeTopic } = await import("@/lib/ai/nudge");
+    const tpl = parseQuietTemplate(["[對話追蹤範本] Hello~ 您詢問的{主題}", "[對話追蹤範本] 還有其他想問的地方嗎？"].join("\n"))!;
+    expect(tpl.replace("{主題}", safeTopic("白框三橫拉", "客人：白框三橫拉")!)).toBe("Hello~ 您詢問的白框三橫拉\n還有其他想問的地方嗎？");
+    expect(parseQuietTemplate("[對話追蹤範本] 沒有主題")).toBeNull();
+  });
+
+  it("rejects topics that are long, punctuated, or invent numbers", async () => {
+    const { safeTopic } = await import("@/lib/ai/nudge");
+    expect(safeTopic("您詢問的無框內推門", "客人：無框內推")).toBe("無框內推門");
+    expect(safeTopic("白框三橫拉，彰化市的那間浴室要做", "")).toBeNull();
+    expect(safeTopic("7999的拉門", "客人：拉門")).toBeNull();
+    expect(safeTopic("8500的款式", "回覆：價格在8500左右")).toBe("8500的款式");
   });
 });
