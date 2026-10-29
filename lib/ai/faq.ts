@@ -215,9 +215,25 @@ export function sanitizeAnswer(raw: string, maxChars: number, lineWidth?: number
  * Pure decision: given the model's output, what goes out?
  * Exposed for tests.
  */
+/**
+ * Fixed replies the owner wrote word for word, as knowledge-base lines
+ * "[固定回覆:NAME] text" (several lines with the same NAME form one reply).
+ * The model answers {{NAME}} and the exact text goes out, line breaks kept.
+ */
+export function knowledgeBaseFixedReplies(knowledgeBase: string): Map<string, string> {
+  const replies = new Map<string, string[]>();
+  for (const raw of knowledgeBase.split(/\r?\n/)) {
+    const match = raw.trim().match(/^\[固定回覆[:：]([^\]]+)\]\s*(.*)$/);
+    if (!match) continue;
+    const name = match[1].trim();
+    replies.set(name, [...(replies.get(name) ?? []), match[2].trim()]);
+  }
+  return new Map([...replies].map(([name, lines]) => [name, lines.filter(Boolean).join("\n")]));
+}
+
 export function decideFaqReply(
   output: { answer: string; confident: boolean; crisis?: boolean } | null,
-  settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars" | "maxLineWidth">
+  settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars" | "maxLineWidth"> & { knowledgeBase?: string }
 ):
   | { kind: "answered"; text: string }
   | { kind: "handoff"; text: string }
@@ -226,6 +242,15 @@ export function decideFaqReply(
   if (output?.crisis) return { kind: "crisis", text: CRISIS_MESSAGE };
   const handoff = settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE;
   if (!output || !output.confident) return { kind: "handoff", text: handoff };
+  // {{NAME}}, or the bare NAME the model sometimes sends instead.
+  const fixedReplies = knowledgeBaseFixedReplies(settings.knowledgeBase ?? "");
+  const fixedName = output.answer.trim().match(/^\{\{(.+)\}\}$/)?.[1]?.trim();
+  if (fixedName) {
+    const fixed = fixedReplies.get(fixedName);
+    return fixed ? { kind: "answered", text: fixed } : { kind: "handoff", text: handoff };
+  }
+  const bare = fixedReplies.get(output.answer.trim());
+  if (bare) return { kind: "answered", text: bare };
   const text = sanitizeAnswer(output.answer, settings.maxReplyChars, settings.maxLineWidth);
   if (!text) return { kind: "handoff", text: handoff };
   return { kind: "answered", text };

@@ -201,3 +201,22 @@ describe("punctuation at a line start", () => {
     expect(formatAiText("請問工地是在哪一縣市\n、哪一區呢😊", 16)).not.toMatch(/\n、/);
   });
 });
+
+describe("fixed replies", () => {
+  const kb = [
+    "[固定回覆:預約] 好的~幫您預約師傅免費到府丈量討論~",
+    "[固定回覆:預約] 請問是在哪個縣市/哪一區呢?",
+  ].join("\n");
+  const s = { handoffMessage: "轉給師傅", maxReplyChars: 300, maxLineWidth: 10, knowledgeBase: kb };
+
+  it("sends the owner's exact text, line breaks kept, even past the line width", () => {
+    expect(decideFaqReply({ answer: "{{預約}}", confident: true }, s)).toEqual({
+      kind: "answered",
+      text: "好的~幫您預約師傅免費到府丈量討論~\n請問是在哪個縣市/哪一區呢?",
+    });
+  });
+
+  it("hands off when the model names a fixed reply that does not exist", () => {
+    expect(decideFaqReply({ answer: "{{不存在}}", confident: true }, s).kind).toBe("handoff");
+  });
+});
