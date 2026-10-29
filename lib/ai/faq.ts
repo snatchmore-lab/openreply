@@ -481,15 +481,22 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "ai-unavailable" };
   }
 
-  const decision = decideFaqReply(result.result, settings);
+  let decision = decideFaqReply(result.result, settings);
 
   // Already handed off: never send the handoff line twice in a row. If the
   // bot has answered other things since, a new request that needs the owner
-  // (a booking, a photo) is handed off again, alert included.
+  // (a booking, a photo) is handed off again, alert included. Right after the
+  // handoff line, an owner-written [固定回覆:再轉交] ("I'll pass this on too")
+  // goes out once instead; after that the bot stays quiet.
   if (afterHandoff && decision.kind === "handoff") {
     const lastReply = [...earlier].reverse().find((m) => m.direction !== "IN");
-    if (!lastReply || (lastReply.direction === "OUT_AI" && lastReply.text === decision.text)) {
-      return { kind: "silent", reason: "not-ai-state" };
+    const passOn = knowledgeBaseFixedReplies(settings.knowledgeBase).get("再轉交");
+    const lastWasHandoff = lastReply?.direction === "OUT_AI" && lastReply.text === decision.text;
+    const lastWasPassOn = lastReply?.direction === "OUT_AI" && Boolean(passOn) && lastReply.text === passOn;
+    if (!lastReply || lastWasPassOn) return { kind: "silent", reason: "not-ai-state" };
+    if (lastWasHandoff) {
+      if (!passOn) return { kind: "silent", reason: "not-ai-state" };
+      decision = { kind: "handoff", text: passOn };
     }
   }
 

@@ -116,6 +116,32 @@ describe("answer after handoff", () => {
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "轉給本人" }));
   });
 
+  it("right after the handoff, sends the owner's pass-on line once", async () => {
+    setup("NEEDS_HUMAN", true);
+    const acct = await mockPrisma.instagramAccount.findUnique.mock.results[0]?.value;
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      ...(acct ?? {}),
+      id: "acc", instagramId: "ig", username: "yuben", workspaceId: "ws",
+      aiSettings: {
+        faqEnabled: true, knowledgeBase: "[固定回覆:再轉交] 好的~我一起請師傅回覆您唷", handoffMessage: "轉給本人",
+        hourlyLimitPerUser: 8, tone: "friendly", maxReplyChars: 300, notifyEmail: null, answerAfterHandoff: true,
+      },
+      workspace: { aiSettings: null },
+    });
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date() },
+    ]);
+    mockComplete.mockResolvedValue(unsure);
+
+    const out = await handleFaqMessage({ ...msg, messageText: "三片跟兩片差多少" });
+    expect(out).toMatchObject({ kind: "handoff", text: "好的~我一起請師傅回覆您唷" });
+
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "好的~我一起請師傅回覆您唷", messageId: null, createdAt: new Date() },
+    ]);
+    expect(await handleFaqMessage({ ...msg, messageId: "mid2", messageText: "？" })).toEqual({ kind: "silent", reason: "not-ai-state" });
+  });
+
   it("stays silent after a handoff when the setting is off", async () => {
     setup("NEEDS_HUMAN", false);
 
