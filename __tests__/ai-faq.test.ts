@@ -241,6 +241,38 @@ describe("fixedReply field", () => {
   });
 });
 
+describe("owner replies in a thread the bot has not seen", () => {
+  it("starts the thread as the owner's", async () => {
+    const { prisma } = (await import("@/lib/db/client")) as unknown as { prisma: Record<string, unknown> };
+    const upserts: Array<{ create: { status: string }; update: { status: string } }> = [];
+    const messages: Array<{ data: { direction: string; text: string } }> = [];
+    Object.assign(prisma, {
+      instagramAccount: {
+        findUnique: async () => ({ id: "acc", workspaceId: "ws", provider: "INSTAGRAM", aiSettings: null, workspace: { aiSettings: null } }),
+      },
+      conversation: {
+        findFirst: async () => null,
+        upsert: async (args: (typeof upserts)[number]) => {
+          upserts.push(args);
+          return { id: "conv", senderName: null };
+        },
+      },
+      conversationMessage: { create: async (args: (typeof messages)[number]) => { messages.push(args); return {}; } },
+    });
+    const { handleHumanEcho } = await import("@/lib/ai/faq");
+    const outcome = await handleHumanEcho({
+      instagramAccountId: "ig_1",
+      recipientId: "user_1",
+      messageId: "m_1",
+      messageText: "待會見～",
+    });
+    expect(outcome).toBe("taken-over");
+    expect(upserts[0].create.status).toBe("HUMAN");
+    expect(upserts[0].update.status).toBe("HUMAN");
+    expect(messages[0].data).toMatchObject({ direction: "OUT_HUMAN", text: "待會見～" });
+  });
+});
+
 describe("Meta's own follow-up echoes", () => {
   it("recognises the default template follow-up and owner-listed phrases", async () => {
     const { isMetaAutomationText } = await import("@/lib/ai/faq");

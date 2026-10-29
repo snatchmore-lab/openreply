@@ -267,14 +267,6 @@ export function decideFaqReply(
   return { kind: "answered", text };
 }
 
-/**
- * The account owner replied from the Instagram app (an echo whose message id
- * this system never sent). Hand the thread to the human: the bot goes silent
- * and the dashboard shows "Taken over". Only threads the bot has already
- * touched are affected; a human replying in a thread the bot never saw
- * creates nothing. The human's text is kept so the bot's later context and
- * the dashboard history include it.
- */
 /** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
 const META_AUTOMATION_PHRASES = ["來向你打聲招呼"];
 
@@ -306,6 +298,15 @@ async function isMetaAutomationEcho(instagramId: string, text: string): Promise<
   }
 }
 
+/**
+ * The account owner replied from the Instagram app (an echo whose message id
+ * this system never sent). Hand the thread to the human: the bot goes silent
+ * and the dashboard shows "Taken over". A reply in a thread the bot has not
+ * seen yet (an older customer, or one the owner wrote to first) starts that
+ * thread as the owner's, so the customer's next message is not answered as
+ * if it were a new chat. The human's text is kept so the bot's later context
+ * and the dashboard history include it.
+ */
 export async function handleHumanEcho(input: {
   instagramAccountId: string; // IG user id (instagramId), as in the webhook
   recipientId: string;
@@ -323,7 +324,7 @@ export async function handleHumanEcho(input: {
     },
     select: { id: true, status: true },
   });
-  if (!conversation) return "no-thread";
+  if (!conversation) return startHumanThread(input);
 
   await prisma.conversationMessage
     .create({
@@ -351,6 +352,61 @@ export async function handleHumanEcho(input: {
     data: { status: "HUMAN", takenOverAt: new Date(), lastMessageAt: new Date() },
   });
   return "taken-over";
+}
+
+async function startHumanThread(input: {
+  instagramAccountId: string;
+  recipientId: string;
+  messageId: string;
+  messageText: string;
+}): Promise<"taken-over" | "no-thread"> {
+  const account = await prisma.instagramAccount.findUnique({
+    where: { instagramId: input.instagramAccountId },
+  });
+  if (!account) return "no-thread";
+
+  const now = new Date();
+  // upsert: the customer's message may have created the thread meanwhile.
+  const conversation = await prisma.conversation.upsert({
+    where: {
+      instagramAccountId_senderId: { instagramAccountId: account.id, senderId: input.recipientId },
+    },
+    create: {
+      workspaceId: account.workspaceId,
+      instagramAccountId: account.id,
+      senderId: input.recipientId,
+      status: "HUMAN",
+      takenOverAt: now,
+      lastMessageAt: now,
+    },
+    update: { status: "HUMAN", takenOverAt: now, lastMessageAt: now },
+    select: { id: true, senderName: true },
+  });
+  await prisma.conversationMessage
+    .create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUT_HUMAN",
+        text: input.messageText,
+        messageId: input.messageId,
+      },
+    })
+    .catch(() => {
+      // Duplicate echo delivery; the unique messageId already recorded it.
+    });
+  if (account.provider === "FACEBOOK_PAGE" && !conversation.senderName) {
+    await fillPageSenderName(account, conversation.id, input.recipientId);
+  }
+  return "taken-over";
+}
+
+/** The owner may have replied while the model was writing. */
+async function ownerHasThread(conversationId: string): Promise<boolean> {
+  const current = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { status: true },
+  });
+  return current?.status === "HUMAN";
 }
 
 /**
@@ -550,6 +606,7 @@ export async function handleFaqMessage(input: {
   if (!(await isLatestInboundMessage(input.instagramAccountId, input.senderId, input.messageId))) {
     return { kind: "silent", reason: "superseded" };
   }
+  if (await ownerHasThread(conversation.id)) return { kind: "silent", reason: "not-ai-state" };
 
   // Share the per-account hourly DM budget with campaign sends so the bot can
   // never push the account over Instagram's cap. No slot → stay silent now;

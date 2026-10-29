@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockPrisma, mockSend, mockComplete, mockEmail } = vi.hoisted(() => ({
   mockPrisma: {
     instagramAccount: { findUnique: vi.fn() },
-    conversation: { upsert: vi.fn(), update: vi.fn() },
+    conversation: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
     conversationMessage: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -55,6 +55,7 @@ function setup(status: "AI" | "NEEDS_HUMAN" | "HUMAN", answerAfterHandoff: boole
   });
   mockPrisma.conversationMessage.findUnique.mockResolvedValue(null);
   mockPrisma.conversation.upsert.mockResolvedValue({ id: "conv", status });
+  mockPrisma.conversation.findUnique.mockResolvedValue({ status });
   mockPrisma.conversationMessage.create.mockResolvedValue({});
   mockPrisma.conversationMessage.count.mockResolvedValue(0);
   mockPrisma.conversationMessage.findMany.mockResolvedValue([]);
