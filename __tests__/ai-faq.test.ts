@@ -228,3 +228,15 @@ describe("fixed replies with spacing", () => {
     expect(knowledgeBaseFixedReplies(kb).get("門市")).toBe("目前門市在雲林斗六~\n\n想看樣式的話");
   });
 });
+
+describe("fixedReply field", () => {
+  const kb = "[固定回覆:線上報價] 目前沒有提供線上報價~";
+  const s = { handoffMessage: "轉給師傅", maxReplyChars: 300, maxLineWidth: 17, knowledgeBase: kb };
+  it("sends the named fixed reply even when the answer text is empty", () => {
+    expect(decideFaqReply({ answer: "", confident: true, fixedReply: "線上報價" }, s)).toEqual({ kind: "answered", text: "目前沒有提供線上報價~" });
+    expect(decideFaqReply({ answer: "", confident: false, fixedReply: "線上報價" }, s).kind).toBe("answered");
+  });
+  it("hands off when the name is unknown and the model was unsure", () => {
+    expect(decideFaqReply({ answer: "", confident: false, fixedReply: "不存在" }, s).kind).toBe("handoff");
+  });
+});

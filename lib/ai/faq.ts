@@ -52,6 +52,8 @@ const FaqOutput = z.object({
   crisis: z.boolean(),
   /** Photo URLs picked from the knowledge base's [圖片] lines. */
   images: z.array(z.string()),
+  /** NAME of a [固定回覆:NAME] the knowledge base says to use, or "". */
+  fixedReply: z.string(),
 });
 
 const MAX_IMAGES_PER_REPLY = 3;
@@ -233,7 +235,7 @@ export function knowledgeBaseFixedReplies(knowledgeBase: string): Map<string, st
 }
 
 export function decideFaqReply(
-  output: { answer: string; confident: boolean; crisis?: boolean } | null,
+  output: { answer: string; confident: boolean; crisis?: boolean; fixedReply?: string } | null,
   settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars" | "maxLineWidth"> & { knowledgeBase?: string }
 ):
   | { kind: "answered"; text: string }
@@ -242,9 +244,14 @@ export function decideFaqReply(
   // Safety first: a crisis never gets a knowledge-base answer.
   if (output?.crisis) return { kind: "crisis", text: CRISIS_MESSAGE };
   const handoff = settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE;
-  if (!output || !output.confident) return { kind: "handoff", text: handoff };
-  // {{NAME}}, or the bare NAME the model sometimes sends instead.
+  if (!output) return { kind: "handoff", text: handoff };
+  // A fixed reply the owner wrote wins, even if the model marked itself unsure:
+  // the knowledge base said to use it.
   const fixedReplies = knowledgeBaseFixedReplies(settings.knowledgeBase ?? "");
+  const picked = fixedReplies.get(output.fixedReply?.trim() ?? "");
+  if (picked) return { kind: "answered", text: picked };
+  if (!output.confident) return { kind: "handoff", text: handoff };
+  // {{NAME}}, or the bare NAME the model sometimes sends instead.
   const fixedName = output.answer.trim().match(/^\{\{(.+)\}\}$/)?.[1]?.trim();
   if (fixedName) {
     const fixed = fixedReplies.get(fixedName);
