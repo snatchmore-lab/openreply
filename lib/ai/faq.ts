@@ -273,7 +273,17 @@ export function decideFaqReply(
   if (bare) return { kind: "answered", text: bare };
   const text = sanitizeAnswer(output.answer, settings.maxReplyChars, settings.maxLineWidth);
   if (!text) return { kind: "handoff", text: handoff };
+  // The model sometimes writes the owner's handoff line itself as a confident
+  // answer. That is a handoff, and must count as one so the "never twice in a
+  // row" rule still applies (seen in simulation: the same line three times).
+  if (sameWords(text, handoff)) return { kind: "handoff", text: handoff };
   return { kind: "answered", text };
+}
+
+/** Equal once spaces, line breaks and punctuation are ignored. */
+function sameWords(a: string, b: string): boolean {
+  const strip = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
+  return strip(a).length > 0 && strip(a) === strip(b);
 }
 
 /**

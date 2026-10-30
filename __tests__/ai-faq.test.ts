@@ -42,6 +42,13 @@ describe("decideFaqReply", () => {
     });
   });
 
+  it("counts the model repeating the handoff line as a handoff", () => {
+    expect(decideFaqReply({ answer: "我幫你轉給本人" + String.fromCharCode(10) + "稍等🙏", confident: true }, settings)).toEqual({
+      kind: "handoff",
+      text: "我幫你轉給本人，稍等 🙏",
+    });
+  });
+
   it("falls back to the handoff when the model returned nothing usable", () => {
     expect(decideFaqReply(null, settings).kind).toBe("handoff");
     expect(decideFaqReply({ answer: "   ", confident: true }, settings).kind).toBe("handoff");
