@@ -81,6 +81,8 @@ export interface ProcessMessageJob {
   messageId: string;
   messageText: string;
   senderId: string;
+  /** When the webhook received it; a job run long after is a catch-up, not a reply. */
+  receivedAt?: number;
 }
 
 // One hour after a person tapped an ad button: if they have said nothing

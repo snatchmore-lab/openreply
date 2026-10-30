@@ -275,3 +275,27 @@ describe("per-person hourly cap", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 });
+
+describe("catch-up after an outage", () => {
+  it("leaves a message older than 30 minutes to the owner instead of answering it", async () => {
+    setup("AI", false);
+
+    const out = await handleFaqMessage({ ...msg, receivedAt: Date.now() - 31 * 60 * 1000 });
+
+    expect(out).toEqual({ kind: "silent", reason: "stale" });
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockPrisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "NEEDS_HUMAN" }) })
+    );
+  });
+
+  it("answers a fresh message as usual", async () => {
+    setup("AI", false);
+    mockComplete.mockResolvedValue(answer("能力盤點免費喔"));
+
+    const out = await handleFaqMessage({ ...msg, receivedAt: Date.now() - 20 * 1000 });
+
+    expect(out).toMatchObject({ kind: "answered" });
+  });
+});

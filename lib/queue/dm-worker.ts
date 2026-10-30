@@ -1479,7 +1479,7 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
  * Dedup is per inbound message id, so each message triggers at most one reply.
  */
 async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
-  const { instagramAccountId, messageId, messageText, senderId } = job.data;
+  const { instagramAccountId, messageId, messageText, senderId, receivedAt } = job.data;
 
   const automations = await prisma.automation.findMany({
     where: {
@@ -1787,6 +1787,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         senderId,
         messageId,
         messageText,
+        receivedAt,
       });
       if (outcome.kind !== "silent") {
         console.log(`[FAQ bot] ${outcome.kind} for ${senderId}`);

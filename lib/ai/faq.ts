@@ -41,6 +41,8 @@ import {
 } from "./prompts";
 
 export const DEFAULT_HANDOFF_MESSAGE = "這個問題我幫你轉給本人回覆，請稍等一下 🙏";
+/** A message older than this when its job runs is a catch-up after an outage, not a conversation. */
+export const STALE_MESSAGE_MS = 30 * 60 * 1000;
 export const HISTORY_TURNS = 6;
 
 /**
@@ -149,7 +151,8 @@ export type FaqOutcome =
         | "ai-unavailable"
         | "send-failed"
         | "superseded"
-        | "auto-answered";
+        | "auto-answered"
+        | "stale";
     };
 
 /** Unanswered messages from the last two minutes are answered together. */
@@ -568,6 +571,8 @@ export async function handleFaqMessage(input: {
   senderId: string;
   messageId: string;
   messageText: string;
+  /** When the webhook received the message (ms since epoch). */
+  receivedAt?: number;
 }): Promise<FaqOutcome> {
   const account = await prisma.instagramAccount.findUnique({
     where: { instagramId: input.instagramAccountId },
@@ -618,6 +623,26 @@ export async function handleFaqMessage(input: {
   // Facebook Page threads have no other place to show who is talking.
   if (account.provider === "FACEBOOK_PAGE" && !conversation.senderName) {
     await fillPageSenderName(account, conversation.id, input.senderId);
+  }
+
+  // The worker was down and is catching up: answering a message from half an
+  // hour ago lands after the owner has most likely dealt with it. The thread
+  // goes to the owner instead, with one LINE note per outage.
+  if (input.receivedAt && now.getTime() - input.receivedAt > STALE_MESSAGE_MS) {
+    if (conversation.status === "AI") {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { status: "NEEDS_HUMAN", needsHumanAt: now },
+      });
+    }
+    if (lineNotifyEnabledFor(account.instagramId)) {
+      await pushThrottledLineMessage(
+        `stale-${account.id}`,
+        10 * 60,
+        "機器人剛恢復運作\n停擺期間有客人傳訊息進來\n超過 30 分鐘的機器人不會補回\n請到收件匣看一下並親自回覆"
+      );
+    }
+    return { kind: "silent", reason: "stale" };
   }
 
   await scheduleNudge({
