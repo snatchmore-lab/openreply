@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockPrisma, mockSend, mockComplete, mockEmail } = vi.hoisted(() => ({
+const { mockPrisma, mockSend, mockComplete, mockEmail, mockTakeAnswer } = vi.hoisted(() => ({
   mockPrisma: {
     instagramAccount: { findUnique: vi.fn() },
     conversation: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
@@ -15,6 +15,7 @@ const { mockPrisma, mockSend, mockComplete, mockEmail } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   mockComplete: vi.fn(),
   mockEmail: vi.fn(),
+  mockTakeAnswer: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({ prisma: mockPrisma }));
@@ -28,6 +29,11 @@ vi.mock("@/lib/utils/rate-limiter", () => ({
   releaseDMSlot: vi.fn(),
 }));
 vi.mock("@/lib/ai/service", () => ({ completeJson: mockComplete }));
+vi.mock("@/lib/instagram/sent-mids", () => ({
+  isLatestInboundMessage: async () => true,
+  rememberAutomatedAnswer: vi.fn(),
+  takeAutomatedAnswer: mockTakeAnswer,
+}));
 vi.mock("@/lib/notify/email", () => ({
   isValidEmail: (v: unknown) => typeof v === "string" && v.includes("@"),
   sendThrottledNotifyEmail: mockEmail,
@@ -62,6 +68,7 @@ function setup(status: "AI" | "NEEDS_HUMAN" | "HUMAN", answerAfterHandoff: boole
   mockPrisma.$transaction.mockResolvedValue([]);
   mockEmail.mockResolvedValue(undefined);
   mockSend.mockResolvedValue({});
+  mockTakeAnswer.mockResolvedValue(null);
 }
 
 const answer = (text: string) => ({
@@ -159,5 +166,89 @@ describe("answer after handoff", () => {
 
     expect(out).toEqual({ kind: "silent", reason: "not-ai-state" });
     expect(mockComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe("Meta's Page FAQ answered first", () => {
+  it("does not answer a button tap Meta already answered, and keeps Meta's text", async () => {
+    setup("AI", false);
+    mockTakeAnswer.mockResolvedValue("傳幾張您的【浴室照片】");
+
+    const out = await handleFaqMessage({ ...msg, messageText: "我有浴室整修需求" });
+
+    expect(out).toEqual({ kind: "silent", reason: "auto-answered" });
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockPrisma.conversationMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ direction: "OUT_AI", text: "傳幾張您的【浴室照片】", aiMeta: { automation: true } }),
+    });
+  });
+
+  it("stays quiet when Meta's answer lands while the model is writing", async () => {
+    setup("AI", false);
+    mockTakeAnswer.mockResolvedValueOnce(null).mockResolvedValueOnce("傳幾張您的【浴室照片】");
+    mockComplete.mockResolvedValue(answer("好的想做哪些項目呢"));
+
+    const out = await handleFaqMessage({ ...msg, messageText: "我有浴室整修需求" });
+
+    expect(out).toEqual({ kind: "silent", reason: "auto-answered" });
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("out-of-area requests", () => {
+  const kb = [
+    "[沒服務地區] 台北 新北 新竹 台南 宜蘭",
+    "[服務地區] 台中 彰化 雲林",
+    "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹",
+  ].join(String.fromCharCode(10));
+  const withKb = () => {
+    setup("AI", false);
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      id: "acc",
+      instagramId: "ig",
+      username: "yuben",
+      workspaceId: "ws",
+      aiSettings: {
+        faqEnabled: true,
+        knowledgeBase: kb,
+        handoffMessage: "轉給本人",
+        hourlyLimitPerUser: 8,
+        tone: "friendly",
+        maxReplyChars: 300,
+        notifyEmail: null,
+        answerAfterHandoff: false,
+      },
+      workspace: { aiSettings: null },
+    });
+  };
+
+  it("answers 沒服務 for an unserved city without asking the model", async () => {
+    withKb();
+    const out = await handleFaqMessage({ ...msg, messageText: "請問臺北，拆浴缸，防水，重貼磁磚，可以處理嗎" });
+
+    expect(out).toMatchObject({ kind: "answered", text: "哇…目前還沒有服務到那邊🥹" });
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("leaves it to the model when a served city is named too", async () => {
+    withKb();
+    mockComplete.mockResolvedValue(answer("台中可以唷"));
+    const out = await handleFaqMessage({ ...msg, messageText: "以前住台北 現在房子在台中" });
+
+    expect(out).toMatchObject({ kind: "answered", text: "台中可以唷" });
+    expect(mockComplete).toHaveBeenCalled();
+  });
+
+  it("says 沒服務 once; later messages go to the model", async () => {
+    withKb();
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹", messageId: null, createdAt: new Date() },
+    ]);
+    mockComplete.mockResolvedValue(answer("不好意思~可能要麻煩您自己找找看"));
+    const out = await handleFaqMessage({ ...msg, messageText: "那台北有推薦的師傅嗎" });
+
+    expect(mockComplete).toHaveBeenCalled();
+    expect(out).toMatchObject({ kind: "answered" });
   });
 });

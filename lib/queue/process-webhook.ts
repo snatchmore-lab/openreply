@@ -3,7 +3,7 @@ import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/cli
 import { humanDelays } from '@/lib/queue/pacing';
 import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { isLikelyAutomatedEcho, rememberInboundMessage, wasSentByUs } from '@/lib/instagram/sent-mids';
-import { handleHumanEcho } from '@/lib/ai/faq';
+import { handleHumanEcho, noteAutomatedAnswer } from '@/lib/ai/faq';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -149,8 +149,16 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of echoEvents) {
       if (!accountMap.has(event.instagramAccountId)) continue;
       if (await wasSentByUs(event.messageId)) continue;
-      // Meta's instant replies / templates, not the owner typing.
-      if (await isLikelyAutomatedEcho(event.instagramAccountId, event.recipientId)) continue;
+      // Meta's instant replies / templates, not the owner typing. One that
+      // answers the customer's message keeps the bot from answering it too.
+      if (await isLikelyAutomatedEcho(event.instagramAccountId, event.recipientId)) {
+        await noteAutomatedAnswer({
+          instagramAccountId: event.instagramAccountId,
+          recipientId: event.recipientId,
+          messageText: event.messageText,
+        }).catch(() => {});
+        continue;
+      }
       await handleHumanEcho({
         instagramAccountId: event.instagramAccountId,
         recipientId: event.recipientId,

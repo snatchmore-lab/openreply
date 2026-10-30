@@ -22,13 +22,13 @@ import {
   PermissionError,
   TokenExpiredError,
 } from "@/lib/instagram/provider";
-import { isLatestInboundMessage } from "@/lib/instagram/sent-mids";
+import { isLatestInboundMessage, rememberAutomatedAnswer, takeAutomatedAnswer } from "@/lib/instagram/sent-mids";
 import { getPageUserName } from "@/lib/meta/client";
 import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
 import { scheduleLineReminder } from "@/lib/notify/line-reminder";
 import { scheduleNudge } from "./nudge";
 import { reportProblem, resolveProblem } from "@/lib/notify/owner-line";
-import { completeJson } from "./service";
+import { completeJson, type AiResult } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
 import { normalizeTone } from "./opening";
 import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
@@ -112,22 +112,24 @@ export async function previewFaqAnswer(input: {
     return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
   }
   const maxChars = Math.min(1000, Math.max(50, input.settings.maxReplyChars));
-  const result = await completeJson({
-    feature: "faq",
-    workspaceId: input.workspaceId,
-    system: FAQ_SYSTEM_PROMPT,
-    context: buildFaqContextBlock(input.settings.knowledgeBase),
-    user: buildFaqUserPrompt({
-      question: input.question.slice(0, 1000),
-      history: [],
-      tone: normalizeTone(input.settings.tone),
-      maxChars,
-      lineWidth: clampLineWidth(input.settings.maxLineWidth),
-    }),
-    schema: FaqOutput,
-    cacheScope: ["preview"],
-    maxTokens: 2000,
-  });
+  const result = isOutOfAreaRequest(input.question, input.settings.knowledgeBase, [])
+    ? OUT_OF_AREA_RESULT
+    : await completeJson({
+      feature: "faq",
+      workspaceId: input.workspaceId,
+      system: FAQ_SYSTEM_PROMPT,
+      context: buildFaqContextBlock(input.settings.knowledgeBase),
+      user: buildFaqUserPrompt({
+        question: input.question.slice(0, 1000),
+        history: [],
+        tone: normalizeTone(input.settings.tone),
+        maxChars,
+        lineWidth: clampLineWidth(input.settings.maxLineWidth),
+      }),
+      schema: FaqOutput,
+      cacheScope: ["preview"],
+      maxTokens: 2000,
+    });
   if (!result.ok) return { kind: "unavailable", detail: result.detail };
   return decideFaqReply(result.result, { ...input.settings, maxReplyChars: maxChars });
 }
@@ -146,7 +148,8 @@ export type FaqOutcome =
         | "hourly-limit"
         | "ai-unavailable"
         | "send-failed"
-        | "superseded";
+        | "superseded"
+        | "auto-answered";
     };
 
 /** Unanswered messages from the last two minutes are answered together. */
@@ -267,6 +270,45 @@ export function decideFaqReply(
   return { kind: "answered", text };
 }
 
+/**
+ * Places the owner does not serve and places they do, as knowledge-base lines
+ * "[沒服務地區] 台北 新北 …" and "[服務地區] 台中 彰化 …". A message naming
+ * only unserved places gets [固定回覆:沒服務] without asking the model, which
+ * sometimes hands a long out-of-area request to the owner instead. Once per
+ * conversation: after that the model answers follow-ups (a referral, say).
+ */
+export function isOutOfAreaRequest(
+  message: string,
+  knowledgeBase: string,
+  earlier: { direction: string; text: string }[]
+): boolean {
+  const reply = knowledgeBaseFixedReplies(knowledgeBase).get("沒服務");
+  if (!reply) return false;
+  const text = message.replace(/臺/g, "台");
+  if (!placeList(knowledgeBase, "沒服務地區").some((place) => text.includes(place))) return false;
+  if (placeList(knowledgeBase, "服務地區").some((place) => text.includes(place))) return false;
+  return !earlier.some((m) => m.direction === "OUT_AI" && m.text === reply);
+}
+
+function placeList(knowledgeBase: string, tag: string): string[] {
+  return knowledgeBase
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(`[${tag}]`))
+    .flatMap((line) => line.slice(tag.length + 2).split(/[\s、，,]+/))
+    .map((place) => place.replace(/臺/g, "台"))
+    .filter(Boolean);
+}
+
+/** The model's output for an out-of-area request, written by the rule above. */
+const OUT_OF_AREA_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
+  ok: true,
+  result: { answer: "", confident: true, crisis: false, images: [], fixedReply: "沒服務" },
+  cached: false,
+  model: "rule:out-of-area",
+  usage: null,
+};
+
 /** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
 const META_AUTOMATION_PHRASES = ["來向你打聲招呼"];
 
@@ -296,6 +338,42 @@ async function isMetaAutomationEcho(instagramId: string, text: string): Promise<
   } catch {
     return isMetaAutomationText(text, "");
   }
+}
+
+/**
+ * An automated message (Meta's Page FAQ answering a button tap) right after
+ * the customer's message. Meta's ad greetings are not answers: they arrive
+ * around the first message whatever the customer asked.
+ */
+export async function noteAutomatedAnswer(input: {
+  instagramAccountId: string;
+  recipientId: string;
+  messageText: string;
+}): Promise<void> {
+  if (await isMetaAutomationEcho(input.instagramAccountId, input.messageText)) return;
+  await rememberAutomatedAnswer(input.instagramAccountId, input.recipientId, input.messageText || "[附件]");
+}
+
+/**
+ * Meta's Page FAQ already answered this message: the bot does not answer it
+ * again. The answer is kept as the bot's turn (not counted as its reply), so
+ * later answers know what the customer was already asked.
+ */
+async function answeredByAutomation(
+  conversationId: string,
+  input: { instagramAccountId: string; senderId: string; messageId: string }
+): Promise<boolean> {
+  const text = await takeAutomatedAnswer(input.instagramAccountId, input.senderId, input.messageId);
+  if (!text) return false;
+  await prisma.conversationMessage.create({
+    data: {
+      conversationId,
+      direction: "OUT_AI",
+      text,
+      aiMeta: { automation: true } as unknown as Prisma.InputJsonValue,
+    },
+  });
+  return true;
 }
 
 /**
@@ -556,25 +634,29 @@ export async function handleFaqMessage(input: {
   const { pending, history } = splitPendingMessages(earlier, now);
   const question = [...pending, input.messageText].join("\n");
 
+  if (await answeredByAutomation(conversation.id, input)) return { kind: "silent", reason: "auto-answered" };
+
   const tone = normalizeTone(settings.tone);
   const maxChars = Math.min(1000, Math.max(50, settings.maxReplyChars));
 
-  const result = await completeJson({
-    feature: "faq",
-    workspaceId: account.workspaceId,
-    system: FAQ_SYSTEM_PROMPT,
-    context: buildFaqContextBlock(settings.knowledgeBase),
-    user: buildFaqUserPrompt({
-      question: question.slice(0, 1000),
-      history,
-      tone,
-      maxChars,
-      lineWidth: clampLineWidth(settings.maxLineWidth),
-    }),
-    schema: FaqOutput,
-    cacheScope: [conversation.id],
-    maxTokens: 2000,
-  });
+  const result = isOutOfAreaRequest(question, settings.knowledgeBase, earlier)
+    ? OUT_OF_AREA_RESULT
+    : await completeJson({
+      feature: "faq",
+      workspaceId: account.workspaceId,
+      system: FAQ_SYSTEM_PROMPT,
+      context: buildFaqContextBlock(settings.knowledgeBase),
+      user: buildFaqUserPrompt({
+        question: question.slice(0, 1000),
+        history,
+        tone,
+        maxChars,
+        lineWidth: clampLineWidth(settings.maxLineWidth),
+      }),
+      schema: FaqOutput,
+      cacheScope: [conversation.id],
+      maxTokens: 2000,
+    });
 
   if (!result.ok) {
     // AI off / cap / provider error: silence is safer than a canned handoff
@@ -607,6 +689,7 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "superseded" };
   }
   if (await ownerHasThread(conversation.id)) return { kind: "silent", reason: "not-ai-state" };
+  if (await answeredByAutomation(conversation.id, input)) return { kind: "silent", reason: "auto-answered" };
 
   // Share the per-account hourly DM budget with campaign sends so the bot can
   // never push the account over Instagram's cap. No slot → stay silent now;

@@ -103,3 +103,54 @@ export async function isLatestInboundMessage(
     return true;
   }
 }
+
+/**
+ * Meta's Page FAQ answers a button tap by itself, a few seconds after the
+ * customer's message. Kept for the bot's job for that message, so the bot
+ * does not answer it a second time. Tied to the message it answered: a newer
+ * message from the person is still the bot's to answer.
+ */
+const ANSWERED_PREFIX = "openreply:auto-answered:";
+
+export async function rememberAutomatedAnswer(accountId: string, recipientId: string, text: string): Promise<void> {
+  if (!process.env.REDIS_URL) return;
+  try {
+    const redis = getRedisConnection();
+    const messageId = await redis.get(`${LATEST_PREFIX}${accountId}:${recipientId}`);
+    if (!messageId) return;
+    const key = `${ANSWERED_PREFIX}${accountId}:${recipientId}`;
+    const earlier = parseAnswer(await redis.get(key));
+    // Several automated messages for the same customer message form one answer.
+    const joined = earlier?.messageId === messageId ? `${earlier.text}\n${text}` : text;
+    await redis.set(key, JSON.stringify({ messageId, text: joined }), "EX", LATEST_TTL_SECONDS);
+  } catch {
+    // Best-effort: without it the bot answers too, the old behaviour.
+  }
+}
+
+/** The automated answer to this message, once: reading it clears it. */
+export async function takeAutomatedAnswer(accountId: string, senderId: string, messageId: string): Promise<string | null> {
+  if (!process.env.REDIS_URL) return null;
+  try {
+    const redis = getRedisConnection();
+    const key = `${ANSWERED_PREFIX}${accountId}:${senderId}`;
+    const answer = parseAnswer(await redis.get(key));
+    if (!answer || answer.messageId !== messageId) return null;
+    await redis.del(key);
+    return answer.text;
+  } catch {
+    return null;
+  }
+}
+
+function parseAnswer(raw: string | null): { messageId: string; text: string } | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as { messageId?: unknown; text?: unknown };
+    return typeof value.messageId === "string" && typeof value.text === "string"
+      ? { messageId: value.messageId, text: value.text }
+      : null;
+  } catch {
+    return null;
+  }
+}

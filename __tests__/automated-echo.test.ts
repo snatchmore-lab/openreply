@@ -55,3 +55,33 @@ describe("latest inbound message", () => {
     expect(await isLatestInboundMessage("page1", "user9", "x")).toBe(true);
   });
 });
+
+describe("automated answers", () => {
+  it("belongs to the message it answered and is read once", async () => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://test";
+    const store = new Map<string, string>();
+    vi.doMock("@/lib/queue/client", () => ({
+      getRedisConnection: () => ({
+        set: async (k: string, v: string) => (store.set(k, v), "OK"),
+        get: async (k: string) => store.get(k) ?? null,
+        del: async (k: string) => (store.delete(k) ? 1 : 0),
+      }),
+    }));
+    const { rememberInboundMessage, rememberAutomatedAnswer, takeAutomatedAnswer } = await import(
+      "@/lib/instagram/sent-mids"
+    );
+    await rememberInboundMessage("page1", "user1", "m1");
+    await rememberAutomatedAnswer("page1", "user1", "傳幾張浴室照片");
+    await rememberAutomatedAnswer("page1", "user1", "[附件]");
+
+    expect(await takeAutomatedAnswer("page1", "user1", "m0")).toBeNull();
+    expect(await takeAutomatedAnswer("page1", "user1", "m1")).toBe("傳幾張浴室照片" + String.fromCharCode(10) + "[附件]");
+    expect(await takeAutomatedAnswer("page1", "user1", "m1")).toBeNull();
+
+    // The person wrote again after Meta answered: the newer message is the bot's.
+    await rememberAutomatedAnswer("page1", "user1", "傳幾張浴室照片");
+    await rememberInboundMessage("page1", "user1", "m2");
+    expect(await takeAutomatedAnswer("page1", "user1", "m2")).toBeNull();
+  });
+});
