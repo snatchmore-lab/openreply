@@ -299,3 +299,32 @@ describe("catch-up after an outage", () => {
     expect(out).toMatchObject({ kind: "answered" });
   });
 });
+
+describe("same answer twice", () => {
+  it("hands off instead of repeating the identical reply", async () => {
+    setup("AI", false);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "能力盤點免費喔", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+      { direction: "IN", text: "能力盤點要錢嗎", messageId: "m0", createdAt: new Date(Date.now() - 90_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("能力盤點免費喔"));
+
+    const out = await handleFaqMessage({ ...msg, messageText: "所以到底要不要錢" });
+
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "轉給本人" }));
+  });
+
+  it("still answers when the reply is new", async () => {
+    setup("AI", false);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "能力盤點免費喔", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("要留言「能力」就可以囉"));
+
+    const out = await handleFaqMessage({ ...msg, messageText: "怎麼做" });
+
+    expect(out).toMatchObject({ kind: "answered" });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+});

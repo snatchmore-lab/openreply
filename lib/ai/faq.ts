@@ -746,6 +746,23 @@ export async function handleFaqMessage(input: {
 
   let decision = decideFaqReply(result.result, settings);
 
+  // Never send the same text twice in a row. A person who asks the same thing
+  // again after an answer or a fixed reply gets the owner instead, which is
+  // what the knowledge base asks for (追問同樣的事 → 請師傅回覆). Simulation
+  // showed the same 線上報價 line going out three times to one person. The
+  // out-of-area replies are left alone: repeating "we do not serve there" is
+  // not a reason to wake the owner.
+  const lastOut = [...earlier].reverse().find((m) => m.direction !== "IN");
+  const outOfArea = ["沒服務", "開放"].map((name) => knowledgeBaseFixedReplies(settings.knowledgeBase).get(name));
+  if (
+    decision.kind === "answered" &&
+    lastOut?.direction === "OUT_AI" &&
+    sameWords(lastOut.text, decision.text) &&
+    !outOfArea.includes(decision.text)
+  ) {
+    decision = { kind: "handoff", text: settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
+  }
+
   // Already handed off: never send the handoff line twice in a row. If the
   // bot has answered other things since, a new request that needs the owner
   // (a booking, a photo) is handed off again, alert included. Right after the
