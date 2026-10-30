@@ -200,6 +200,9 @@ export function lineAlertSummary(question: string): string {
   const text = question
     .replace(/\(客人傳了照片\)/g, "傳了照片")
     .replace(/\(客人傳了影片\)/g, "傳了影片")
+    .replace(/\(客人傳了語音\)/g, "傳了語音")
+    .replace(/\(客人傳了檔案\)/g, "傳了檔案")
+    .replace(/\(客人分享了連結\)/g, "分享了連結")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
@@ -309,35 +312,71 @@ const OUT_OF_AREA_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
   usage: null,
 };
 
+/** Not an answer: the per-person hourly cap is reached, so the owner takes over. */
+const HOURLY_LIMIT_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
+  ok: true,
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  cached: false,
+  model: "rule:hourly-limit",
+  usage: null,
+};
+
 /** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
 const META_AUTOMATION_PHRASES = ["來向你打聲招呼"];
 
-/**
- * Texts Meta sends by itself (ad template follow-ups): the default phrase,
- * plus any the owner lists in the knowledge base as "[Meta自動訊息] phrase".
- */
-export function isMetaAutomationText(text: string, knowledgeBase: string): boolean {
-  const listed = knowledgeBase
+function taggedPhrases(knowledgeBase: string, tag: string): string[] {
+  return knowledgeBase
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.startsWith("[Meta自動訊息]"))
-    .map((line) => line.slice("[Meta自動訊息]".length).trim())
+    .filter((line) => line.startsWith(`[${tag}]`))
+    .map((line) => line.slice(tag.length + 2).trim())
     .filter(Boolean);
-  return [...META_AUTOMATION_PHRASES, ...listed].some((phrase) => text.includes(phrase));
 }
 
-async function isMetaAutomationEcho(instagramId: string, text: string): Promise<boolean> {
-  if (!text) return false;
+/**
+ * Texts Meta sends by itself around the conversation (ad-template greetings
+ * and follow-ups): the default phrase, plus any the owner lists in the
+ * knowledge base as "[Meta自動訊息] phrase". Not the owner, and not an answer
+ * to anything the customer asked.
+ */
+export function isMetaAutomationText(text: string, knowledgeBase: string): boolean {
+  return [...META_AUTOMATION_PHRASES, ...taggedPhrases(knowledgeBase, "Meta自動訊息")].some((phrase) =>
+    text.includes(phrase)
+  );
+}
+
+/**
+ * Texts Meta sends as the answer to a button the customer tapped (an ad
+ * template's button reply, a Page FAQ answer), listed in the knowledge base as
+ * "[Meta按鈕回覆] phrase". Not the owner, but it does answer the customer's
+ * message, so the bot stays out of that one.
+ */
+export function isMetaButtonReplyText(text: string, knowledgeBase: string): boolean {
+  return taggedPhrases(knowledgeBase, "Meta按鈕回覆").some((phrase) => text.includes(phrase));
+}
+
+export type MetaEchoKind = "greeting" | "button-reply" | null;
+
+/** Which of Meta's own automations this echo is, per the account's knowledge base. */
+export async function classifyMetaEcho(instagramId: string, text: string): Promise<MetaEchoKind> {
+  if (!text) return null;
+  let knowledgeBase = "";
   try {
     const account = await prisma.instagramAccount.findUnique({
       where: { instagramId },
       select: { aiSettings: { select: { knowledgeBase: true } }, workspace: { select: { aiSettings: { select: { knowledgeBase: true } } } } },
     });
-    const knowledgeBase = account?.aiSettings?.knowledgeBase ?? account?.workspace.aiSettings?.knowledgeBase ?? "";
-    return isMetaAutomationText(text, knowledgeBase);
+    knowledgeBase = account?.aiSettings?.knowledgeBase ?? account?.workspace.aiSettings?.knowledgeBase ?? "";
   } catch {
-    return isMetaAutomationText(text, "");
+    // Default phrases only.
   }
+  if (isMetaAutomationText(text, knowledgeBase)) return "greeting";
+  if (isMetaButtonReplyText(text, knowledgeBase)) return "button-reply";
+  return null;
+}
+
+async function isMetaAutomationEcho(instagramId: string, text: string): Promise<boolean> {
+  return (await classifyMetaEcho(instagramId, text)) === "greeting";
 }
 
 /**
@@ -611,7 +650,11 @@ export async function handleFaqMessage(input: {
       createdAt: { gte: oneHourAgo },
     },
   });
-  if (recentReplies >= Math.max(1, settings.hourlyLimitPerUser)) {
+  // Over the per-person cap: the thread goes to the owner once (handoff line,
+  // alert) instead of the person being left on read; after that, quiet until
+  // the hour passes.
+  const limitReached = recentReplies >= Math.max(1, settings.hourlyLimitPerUser);
+  if (limitReached && conversation.status !== "AI") {
     return { kind: "silent", reason: "hourly-limit" };
   }
 
@@ -639,7 +682,9 @@ export async function handleFaqMessage(input: {
   const tone = normalizeTone(settings.tone);
   const maxChars = Math.min(1000, Math.max(50, settings.maxReplyChars));
 
-  const result = isOutOfAreaRequest(question, settings.knowledgeBase, earlier)
+  const result = limitReached
+    ? HOURLY_LIMIT_RESULT
+    : isOutOfAreaRequest(question, settings.knowledgeBase, earlier)
     ? OUT_OF_AREA_RESULT
     : await completeJson({
       feature: "faq",

@@ -252,3 +252,26 @@ describe("out-of-area requests", () => {
     expect(out).toMatchObject({ kind: "answered" });
   });
 });
+
+describe("per-person hourly cap", () => {
+  it("hands the thread to the owner once instead of going quiet", async () => {
+    setup("AI", false);
+    mockPrisma.conversationMessage.count.mockResolvedValue(8);
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ message: "轉給本人" }));
+  });
+
+  it("stays quiet once the thread is already the owner's", async () => {
+    setup("NEEDS_HUMAN", true);
+    mockPrisma.conversationMessage.count.mockResolvedValue(8);
+
+    const out = await handleFaqMessage(msg);
+
+    expect(out).toEqual({ kind: "silent", reason: "hourly-limit" });
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});

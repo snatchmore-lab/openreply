@@ -62,6 +62,13 @@ describe("Page photo messages", () => {
     expect(parseMessageEvents(event({ attachments: [{ type: "image" }] }))[0].messageText).toBe("(客人傳了照片)");
   });
 
+  it("voice notes, files and shared links come through as placeholders", async () => {
+    const { parseMessageEvents } = await import("@/lib/meta/webhook");
+    expect(parseMessageEvents(event({ attachments: [{ type: "audio" }] }))[0].messageText).toBe("(客人傳了語音)");
+    expect(parseMessageEvents(event({ attachments: [{ type: "file" }] }))[0].messageText).toBe("(客人傳了檔案)");
+    expect(parseMessageEvents(event({ attachments: [{ type: "fallback" }] }))[0].messageText).toBe("(客人分享了連結)");
+  });
+
   it("ignores stickers and Instagram media", async () => {
     const { parseMessageEvents } = await import("@/lib/meta/webhook");
     expect(parseMessageEvents(event({ attachments: [{ type: "image" }], sticker_id: 369239263222822 }))).toEqual([]);

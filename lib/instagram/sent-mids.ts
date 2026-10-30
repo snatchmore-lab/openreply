@@ -46,13 +46,16 @@ export async function trackSent<T extends { message_id?: string } | undefined>(
 }
 
 /**
- * Meta's own automations (Page instant replies, saved-reply templates, ad
- * welcome flows) answer within a few seconds of the customer's message and
- * echo back like a human reply. A person never answers that fast, so an echo
- * inside this window after the customer's last inbound message is treated as
- * an automation and does not take the thread away from the bot.
+ * Meta's own automations (ad-template button replies, Page instant replies)
+ * answer within a few seconds of the customer's message and echo back like a
+ * human reply. Nobody reads and types a reply in a few seconds, so an echo
+ * that soon after the customer's message is an automation. The owner's
+ * fastest real replies seen so far landed 10–15 s after the message, so the
+ * window after FAST_AUTOMATION_SECONDS counts as the owner unless the text is
+ * one of Meta's known lines (see the knowledge base tags in lib/ai/faq.ts).
  */
-const AUTOMATION_WINDOW_SECONDS = 15;
+export const FAST_AUTOMATION_SECONDS = 6;
+const INBOUND_TTL_SECONDS = 15 * 60;
 const INBOUND_PREFIX = "openreply:inbound:";
 
 /**
@@ -71,7 +74,7 @@ export async function rememberInboundMessage(
   if (!process.env.REDIS_URL) return;
   try {
     const redis = getRedisConnection();
-    await redis.set(`${INBOUND_PREFIX}${accountId}:${senderId}`, "1", "EX", AUTOMATION_WINDOW_SECONDS);
+    await redis.set(`${INBOUND_PREFIX}${accountId}:${senderId}`, String(Date.now()), "EX", INBOUND_TTL_SECONDS);
     if (messageId) {
       await redis.set(`${LATEST_PREFIX}${accountId}:${senderId}`, messageId, "EX", LATEST_TTL_SECONDS);
     }
@@ -80,12 +83,14 @@ export async function rememberInboundMessage(
   }
 }
 
-export async function isLikelyAutomatedEcho(accountId: string, recipientId: string): Promise<boolean> {
-  if (!process.env.REDIS_URL) return false;
+/** Seconds since this person's last inbound message; null when unknown. */
+export async function secondsSinceInbound(accountId: string, recipientId: string): Promise<number | null> {
+  if (!process.env.REDIS_URL) return null;
   try {
-    return (await getRedisConnection().exists(`${INBOUND_PREFIX}${accountId}:${recipientId}`)) === 1;
+    const at = Number(await getRedisConnection().get(`${INBOUND_PREFIX}${accountId}:${recipientId}`));
+    return at > 0 ? (Date.now() - at) / 1000 : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

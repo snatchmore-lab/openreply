@@ -2,8 +2,8 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { humanDelays } from '@/lib/queue/pacing';
 import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
-import { isLikelyAutomatedEcho, rememberInboundMessage, wasSentByUs } from '@/lib/instagram/sent-mids';
-import { handleHumanEcho, noteAutomatedAnswer } from '@/lib/ai/faq';
+import { FAST_AUTOMATION_SECONDS, rememberInboundMessage, secondsSinceInbound, wasSentByUs } from '@/lib/instagram/sent-mids';
+import { classifyMetaEcho, handleHumanEcho, noteAutomatedAnswer } from '@/lib/ai/faq';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -149,9 +149,14 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of echoEvents) {
       if (!accountMap.has(event.instagramAccountId)) continue;
       if (await wasSentByUs(event.messageId)) continue;
-      // Meta's instant replies / templates, not the owner typing. One that
-      // answers the customer's message keeps the bot from answering it too.
-      if (await isLikelyAutomatedEcho(event.instagramAccountId, event.recipientId)) {
+      // Meta's own automation, not the owner typing: a reply seconds after
+      // the customer's message (nobody types that fast), or a text the
+      // knowledge base lists as Meta's. One that answers the customer's
+      // message keeps the bot from answering it too. Anything else in the
+      // window is the owner replying quickly from the inbox.
+      const age = await secondsSinceInbound(event.instagramAccountId, event.recipientId);
+      const metaKind = await classifyMetaEcho(event.instagramAccountId, event.messageText).catch(() => null);
+      if (metaKind || (age !== null && age <= FAST_AUTOMATION_SECONDS)) {
         await noteAutomatedAnswer({
           instagramAccountId: event.instagramAccountId,
           recipientId: event.recipientId,

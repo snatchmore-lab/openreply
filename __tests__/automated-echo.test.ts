@@ -1,23 +1,35 @@
 import { describe, it, expect, vi } from "vitest";
 
 describe("Meta automation echoes", () => {
-  it("treats an echo right after the customer's message as automated", async () => {
+  it("knows how long ago the customer's last message arrived", async () => {
     vi.resetModules();
     process.env.REDIS_URL = "redis://test";
-    const store = new Map<string, number>();
-    const set = vi.fn(async (key: string, _v: string, _ex: string, ttl: number) => {
-      store.set(key, ttl);
-      return "OK";
-    });
-    const exists = vi.fn(async (key: string) => (store.has(key) ? 1 : 0));
-    vi.doMock("@/lib/queue/client", () => ({ getRedisConnection: () => ({ set, exists }) }));
-    const { rememberInboundMessage, isLikelyAutomatedEcho } = await import("@/lib/instagram/sent-mids");
+    const store = new Map<string, string>();
+    vi.doMock("@/lib/queue/client", () => ({
+      getRedisConnection: () => ({
+        set: async (k: string, v: string) => (store.set(k, v), "OK"),
+        get: async (k: string) => store.get(k) ?? null,
+      }),
+    }));
+    const { rememberInboundMessage, secondsSinceInbound } = await import("@/lib/instagram/sent-mids");
 
-    expect(await isLikelyAutomatedEcho("page1", "user1")).toBe(false);
+    expect(await secondsSinceInbound("page1", "user1")).toBeNull();
     await rememberInboundMessage("page1", "user1");
-    expect(set).toHaveBeenCalledWith("openreply:inbound:page1:user1", "1", "EX", 15);
-    expect(await isLikelyAutomatedEcho("page1", "user1")).toBe(true);
-    expect(await isLikelyAutomatedEcho("page1", "user2")).toBe(false);
+    const age = await secondsSinceInbound("page1", "user1");
+    expect(age).not.toBeNull();
+    expect(age!).toBeLessThan(2);
+    expect(await secondsSinceInbound("page1", "user2")).toBeNull();
+  });
+
+  it("tells Meta's greetings from its button replies by the knowledge base", async () => {
+    const { isMetaAutomationText, isMetaButtonReplyText } = await import("@/lib/ai/faq");
+    const kb = ["[Meta自動訊息] 想幫你家浴室做哪些改變呢", "[Meta按鈕回覆] 預約麻煩提供以下資訊"].join(String.fromCharCode(10));
+    const greeting = ["Hello~ 王小姐", "想幫你家浴室做哪些改變呢👇"].join(String.fromCharCode(10));
+    expect(isMetaAutomationText(greeting, kb)).toBe(true);
+    expect(isMetaButtonReplyText(greeting, kb)).toBe(false);
+    expect(isMetaButtonReplyText("預約麻煩提供以下資訊⬇️ 1️⃣ 您的居住地區", kb)).toBe(true);
+    expect(isMetaAutomationText("好的", kb)).toBe(false);
+    expect(isMetaButtonReplyText("好的", kb)).toBe(false);
   });
 
   it("falls back to 'human' when Redis is down", async () => {
@@ -29,9 +41,9 @@ describe("Meta automation echoes", () => {
         exists: vi.fn().mockRejectedValue(new Error("down")),
       }),
     }));
-    const { rememberInboundMessage, isLikelyAutomatedEcho } = await import("@/lib/instagram/sent-mids");
+    const { rememberInboundMessage, secondsSinceInbound } = await import("@/lib/instagram/sent-mids");
     await expect(rememberInboundMessage("p", "u")).resolves.toBeUndefined();
-    expect(await isLikelyAutomatedEcho("p", "u")).toBe(false);
+    expect(await secondsSinceInbound("p", "u")).toBeNull();
   });
 });
 

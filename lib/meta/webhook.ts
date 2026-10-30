@@ -246,10 +246,10 @@ export function parsePostbackEvents(
  * containing its own keyword trigger itself.
  */
 /**
- * A photo or video sent to a Facebook Page has no text. It still matters to
- * the FAQ bot (the owner wants customer photos handed to him), so it comes
- * through as a placeholder line. Instagram keeps ignoring media; stickers and
- * likes are not photos.
+ * A photo, video, voice note, file or shared link sent to a Facebook Page has
+ * no text. It still matters to the FAQ bot (the owner wants these handed to
+ * him), so it comes through as a placeholder line. Instagram keeps ignoring
+ * media; stickers and likes are not messages to answer.
  */
 function pageMediaPlaceholder(
   object: string | undefined,
@@ -259,6 +259,9 @@ function pageMediaPlaceholder(
   const types = (message.attachments ?? []).map((a) => a.type);
   if (types.includes("image")) return "(客人傳了照片)";
   if (types.includes("video")) return "(客人傳了影片)";
+  if (types.includes("audio")) return "(客人傳了語音)";
+  if (types.includes("file")) return "(客人傳了檔案)";
+  if (types.includes("fallback") || types.includes("share") || types.includes("template")) return "(客人分享了連結)";
   return undefined;
 }
 
