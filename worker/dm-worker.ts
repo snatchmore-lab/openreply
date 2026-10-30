@@ -3,6 +3,7 @@ import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
 import { pruneAiCache } from "@/lib/ai/service";
+import { checkConnections } from "@/lib/ops/connection-check";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -47,6 +48,10 @@ async function poll() {
   // above so a reconciliation error never stops it.
   const pruned = await pruneAiCache();
   if (pruned > 0) console.log(`[DM Worker] Pruned ${pruned} old AI cache rows`);
+  // Once an hour: can Meta still reach each account? (LINE alert if not.)
+  await checkConnections().catch((error: unknown) => {
+    console.error("[DM Worker] Connection check failed:", error instanceof Error ? error.message : error);
+  });
 }
 
 // Kick off one sweep shortly after boot, then on a fixed interval.
