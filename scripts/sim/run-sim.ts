@@ -211,9 +211,9 @@ function applyBotDecision(c: Convo, raw: string | undefined) {
   let decision = applyReplyRules(decideFaqReply(output, SETTINGS), { question: last.text, earlier, settings: SETTINGS });
   // Production: never two handoff lines in a row; the owner's pass-on line once, then silence.
   const lastBot = [...c.turns].reverse().find((t) => t.role === "bot" && t.kind !== "silent");
-  if (decision.kind === "handoff" && lastBot && lastBot.kind === "handoff") {
+  if (decision.kind === "handoff" && lastBot && waitingOnOwner(c)) {
     if (passOn && lastBot.text !== passOn) decision = { kind: "handoff", text: passOn };
-    else {
+    else if (passOn || lastBot.kind === "handoff") {
       c.turns.push({ role: "bot", text: "[機器人保持沉默，等師傅回覆]", kind: "silent" });
       return;
     }
@@ -273,7 +273,7 @@ ${transcript}
       { type: "text", text: `知識庫：\n\n${KB}`, cache_control: { type: "ephemeral" } },
     ],
     user,
-    maxTokens: 1500,
+    maxTokens: 3000,
   };
 }
 
@@ -295,7 +295,26 @@ function mechanicalIssues(c: Convo): Issue[] {
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────
+async function regradeFailed() {
+  const file = path.join(outDir, "results.json");
+  const data = JSON.parse(fs.readFileSync(file, "utf8")) as { usage: typeof usage; model: string; results: (Convo & { grade: Grade })[] };
+  const failed = data.results.map((r, i) => (r.grade.summary === "（評分失敗）" ? i : -1)).filter((i) => i >= 0);
+  log(`regrading ${failed.length} of ${data.results.length}`);
+  const grades = await runBatchParsed(failed.map((i) => gradeRequest(data.results[i], i)), (t) => {
+    const g = parseJson<Grade>(t);
+    return g && Array.isArray(g.issues) && typeof g.summary === "string" ? g : null;
+  });
+  for (const i of failed) {
+    const g = grades.get(`grade-${i}`);
+    if (g) data.results[i].grade = { ...g, issues: [...g.issues, ...mechanicalIssues(data.results[i])] };
+  }
+  for (const k of Object.keys(usage) as (keyof typeof usage)[]) data.usage[k] += usage[k];
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  log(`done, still failed: ${data.results.filter((r) => r.grade.summary === "（評分失敗）").length}`);
+}
+
 async function main() {
+  if (process.env.REGRADE_FAILED === "1") return regradeFailed();
   const convoCache = path.join(outDir, "convos.json");
   const gradeOnly = process.env.GRADE_ONLY === "1" && fs.existsSync(convoCache);
   const personas = gradeOnly ? [] : await makePersonas();

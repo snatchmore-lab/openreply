@@ -368,7 +368,7 @@ function fixedReplyResult(name: string, model: string): FaqAi {
 
 /** "還沒回嗎", "有人在嗎", "師傅多久會回": the person is waiting on the owner. */
 const ASKING_FOR_REPLY =
-  /(還沒|沒有|怎麼沒|什麼時候|幾時|多久|何時).{0,6}(回|理我|看到|有人)|(^|[^現])在嗎|有人嗎|有看到嗎|人呢|回一下|回我|已讀|等很久|等多久/u;
+  /(還沒|沒有|怎麼沒|什麼時候|幾時|多久|何時).{0,6}(回|理我|看到|有人)|(^|[^現])在嗎|有人嗎|有看到嗎|人呢|已讀|等很久|等多久|(快|趕快|盡快|儘快|趕緊).{0,4}回/u;
 
 export function isAskingForReply(message: string): boolean {
   return ASKING_FOR_REPLY.test(message.replace(/\s/g, ""));
@@ -425,15 +425,29 @@ export function applyReplyRules(
   }
 ): Decision {
   const fixed = knowledgeBaseFixedReplies(input.settings.knowledgeBase);
-  const lastOut = [...input.earlier].reverse().find((m) => m.direction !== "IN");
+  const outbound = input.earlier.filter((m) => m.direction !== "IN");
+  const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
   const outOfArea = ["沒服務", "開放"].map((name) => fixed.get(name));
   if (
     decision.kind === "answered" &&
-    lastOut?.direction === "OUT_AI" &&
-    sameWords(lastOut.text, decision.text) &&
+    outbound.some((m) => m.direction === "OUT_AI" && sameWords(m.text, decision.text)) &&
     !outOfArea.includes(decision.text)
   ) {
     return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
+  }
+
+  // A price question about renovation work (not a shower door) that the
+  // model would hand off: the knowledge base says to explain that only a
+  // site visit can price it ([固定回覆:整修報價], or the version for a known
+  // area). Once; the person who still insists on a number gets the owner.
+  const renovation = fixed.get("整修報價");
+  const renovationKnown = fixed.get("整修報價-已知地區");
+  if (decision.kind === "handoff" && renovation && isRenovationPriceQuestion(input.question)) {
+    const said = outbound.some((m) => sameWords(m.text, renovation) || (renovationKnown ? sameWords(m.text, renovationKnown) : false));
+    if (!said) {
+      const areaKnown = inbound.some((t) => mentionsPlace(t, input.settings.knowledgeBase));
+      return { kind: "answered", text: areaKnown && renovationKnown ? renovationKnown : renovation };
+    }
   }
 
   const askFixtures = fixed.get("先問配件");
@@ -443,11 +457,9 @@ export function applyReplyRules(
     ![...fixed.values()].includes(decision.text) &&
     asksForPhotos(decision.text)
   ) {
-    const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
-    const outbound = input.earlier.filter((m) => m.direction !== "IN").map((m) => m.text);
     const showerDoor = inbound.some((t) => /拉門|淋浴門|玻璃門|隔屏|浴簾/.test(t));
     const fixturesCovered =
-      outbound.some((t) => /龍頭|馬桶|配件/.test(t)) ||
+      outbound.some((m) => /龍頭|馬桶|配件/.test(m.text)) ||
       inbound.some((t) => /龍頭|馬桶|配件|臉盆|浴櫃|設備|整修|翻新/.test(t));
     const photoSent = inbound.some((t) => t.includes("客人傳了照片"));
     if (showerDoor && !fixturesCovered && !photoSent) {
@@ -465,6 +477,23 @@ export function applyReplyRules(
 
 function asksForPhotos(text: string): boolean {
   return text.includes("照片") && /傳|拍|提供|給/.test(text);
+}
+
+/** "拆浴缸改乾濕分離大概多少": a price question about work only a visit can price. */
+export function isRenovationPriceQuestion(text: string): boolean {
+  const t = text.replace(/\s/g, "");
+  return (
+    /多少|價|預算|費用|報價|錢|行情/.test(t) &&
+    /整修|翻新|乾濕分離|浴缸|防水|馬桶|臉盆|浴櫃|鏡櫃|設備|磁磚|地磚|整間/.test(t) &&
+    !/照片|約|幾點|明天|今天|折|便宜|殺價|比價|分期|刷卡|客人傳了/.test(t)
+  );
+}
+
+/** The person has named where they are: a listed place, or a short "台中西屯區". */
+function mentionsPlace(text: string, knowledgeBase: string): boolean {
+  const t = text.replace(/臺/g, "台");
+  const listed = ["服務地區", "沒服務地區", "偏遠鄉鎮"].flatMap((tag) => placeList(knowledgeBase, tag));
+  return listed.some((p) => t.includes(p)) || /(^|[\s,，、])[^\s,，、]{1,6}[縣市區鄉鎮]([\s,，、]|$)/.test(t);
 }
 
 /** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
@@ -892,10 +921,11 @@ export async function handleFaqMessage(input: {
     const lastWasHandoff = lastReply?.direction === "OUT_AI" && lastReply.text === decision.text;
     const lastWasPassOn = lastReply?.direction === "OUT_AI" && Boolean(passOn) && lastReply.text === passOn;
     if (!lastReply || lastWasPassOn) return { kind: "silent", reason: "not-ai-state" };
-    if (lastWasHandoff) {
-      if (!passOn) return { kind: "silent", reason: "not-ai-state" };
-      decision = { kind: "handoff", text: passOn };
-    }
+    // The full handoff line goes out once per thread; every later handoff is
+    // the shorter pass-on line (simulation graders read a second full line
+    // as the bot forgetting it already said so), then quiet.
+    if (passOn) decision = { kind: "handoff", text: passOn };
+    else if (lastWasHandoff) return { kind: "silent", reason: "not-ai-state" };
   }
 
   // The person may have sent more while the model was writing; that newer

@@ -49,10 +49,10 @@ async function main() {
 
   const requests = sample.flatMap((c, i) =>
     Object.entries(VARIANTS).map(([key, text]) => ({
-      custom_id: `${i}|${key.slice(0, 1)}`,
+      custom_id: `${i}-${key.slice(0, 1)}`,
       params: {
         model: MODEL,
-        max_tokens: 300,
+        max_tokens: 1500,
         output_config: { effort: "low" as const },
         system: [{ type: "text" as const, text: "You role-play a Taiwanese customer honestly. Output JSON only." }],
         messages: [{
@@ -89,7 +89,7 @@ ${c.turns.map((t) => `${t.role === "customer" ? "你" : "店家"}：${t.text.rep
 
   const rows = Object.keys(VARIANTS).map((key) => {
     const k = key.slice(0, 1);
-    const vs = sample.map((_, i) => verdicts.get(`${i}|${k}`)).filter((v): v is Verdict => Boolean(v));
+    const vs = sample.map((_, i) => verdicts.get(`${i}-${k}`)).filter((v): v is Verdict => Boolean(v));
     const replies = vs.filter((v) => v.reply).length;
     const annoyed = vs.reduce((s, v) => s + (Number(v.annoyed) || 0), 0) / Math.max(1, vs.length);
     const veryAnnoyed = vs.filter((v) => Number(v.annoyed) >= 4).length;
@@ -100,7 +100,7 @@ ${c.turns.map((t) => `${t.role === "customer" ? "你" : "店家"}：${t.text.rep
   sample.forEach((c, i) => {
     const style = c.persona.style.slice(0, 12);
     for (const key of Object.keys(VARIANTS)) {
-      const v = verdicts.get(`${i}|${key.slice(0, 1)}`);
+      const v = verdicts.get(`${i}-${key.slice(0, 1)}`);
       if (!v) continue;
       const m = byStyle.get(key) ?? new Map();
       const cur = m.get(style) ?? { n: 0, replies: 0 };
@@ -126,7 +126,7 @@ ${c.turns.map((t) => `${t.role === "customer" ? "你" : "店家"}：${t.text.rep
   ];
   for (const key of Object.keys(VARIANTS)) {
     const k = key.slice(0, 1);
-    const said = sample.map((_, i) => verdicts.get(`${i}|${k}`)).filter((v): v is Verdict => Boolean(v?.reply && v.message)).slice(0, 5);
+    const said = sample.map((_, i) => verdicts.get(`${i}-${k}`)).filter((v): v is Verdict => Boolean(v?.reply && v.message)).slice(0, 5);
     md.push(`**${key}**`, "", ...said.map((v) => `- 「${v.message.replace(/\n/g, " ")}」（${v.reason}）`), "");
   }
   md.push("## 不回的理由（最常見）", "");

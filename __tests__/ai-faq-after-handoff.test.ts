@@ -408,3 +408,61 @@ describe("rules shared with the simulation", () => {
     expect(text).not.toContain("龍頭");
   });
 });
+
+describe("renovation price and repeated text", () => {
+  const kb = [
+    "[固定回覆:整修報價] 整修的部分要看現場範圍",
+    "[固定回覆:整修報價] 請問是在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修報價-已知地區] 整修的部分要看現場範圍",
+    "[固定回覆:整修報價-已知地區] 方便先傳幾張浴室照片給師傅看看嗎😊",
+    "[服務地區] 台中 彰化",
+  ].join(String.fromCharCode(10));
+  function setupKb() {
+    setup("AI", false);
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      id: "acc", instagramId: "ig", username: "yuben", workspaceId: "ws",
+      aiSettings: { faqEnabled: true, knowledgeBase: kb, handoffMessage: "轉給本人", hourlyLimitPerUser: 8, tone: "friendly", maxReplyChars: 300, notifyEmail: null, answerAfterHandoff: true },
+      workspace: { aiSettings: null },
+    });
+  }
+
+  it("answers a renovation price question with the fixed reply instead of handing off", async () => {
+    setupKb();
+    mockComplete.mockResolvedValue(unsure);
+    const out = await handleFaqMessage({ ...msg, messageText: "拆浴缸改乾濕分離大概多少" });
+    expect(out).toMatchObject({ kind: "answered", text: "整修的部分要看現場範圍" + String.fromCharCode(10) + "請問是在哪個縣市/哪一區呢😊" });
+  });
+
+  it("uses the known-area version when the person already said where they are", async () => {
+    setupKb();
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "IN", text: "我在彰化", messageId: "m0", createdAt: new Date(Date.now() - 90_000) },
+      { direction: "OUT_AI", text: "好的~", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(unsure);
+    const out = await handleFaqMessage({ ...msg, messageText: "整間翻新預算大概多少" });
+    expect(out).toMatchObject({ kind: "answered", text: "整修的部分要看現場範圍" + String.fromCharCode(10) + "方便先傳幾張浴室照片給師傅看看嗎😊" });
+  });
+
+  it("hands off the second time the same price question comes", async () => {
+    setupKb();
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "整修的部分要看現場範圍" + String.fromCharCode(10) + "請問是在哪個縣市/哪一區呢😊", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(unsure);
+    const out = await handleFaqMessage({ ...msg, messageText: "我就想知道整修大概多少錢" });
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+  });
+
+  it("hands off when the same answer was given earlier in the thread, not only last", async () => {
+    setupKb();
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "保固 2 年唷", messageId: null, createdAt: new Date(Date.now() - 180_000) },
+      { direction: "IN", text: "好", messageId: "m1", createdAt: new Date(Date.now() - 120_000) },
+      { direction: "OUT_AI", text: "不客氣~", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("保固 2 年唷"));
+    const out = await handleFaqMessage({ ...msg, messageText: "所以保固多久" });
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+  });
+});

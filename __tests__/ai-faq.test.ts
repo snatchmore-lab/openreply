@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { decideFaqReply, isAskingForReply, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { decideFaqReply, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -296,8 +296,24 @@ describe("isAskingForReply", () => {
     }
   });
   it("leaves ordinary questions alone", () => {
-    for (const t of ["工期多久", "可以現在嗎", "多少錢", "我在台中", "門檻多久會裝好", "拉門多久能裝"]) {
+    for (const t of ["工期多久", "可以現在嗎", "多少錢", "我在台中", "門檻多久會裝好", "拉門多久能裝", "麻煩師傅有空再回我一下", "好 那我等師傅回"]) {
       expect(isAskingForReply(t), t).toBe(false);
+    }
+  });
+  it("hears someone pressing for a reply", () => {
+    for (const t of ["麻煩快一點回我", "趕快回一下喔"]) expect(isAskingForReply(t), t).toBe(true);
+  });
+});
+
+describe("isRenovationPriceQuestion", () => {
+  it("spots a price question about renovation work", () => {
+    for (const t of ["拆浴缸改乾濕分離大概多少", "整間浴室翻新預算要多少", "換馬桶跟臉盆大概多少錢", "防水重做費用怎麼算"]) {
+      expect(isRenovationPriceQuestion(t), t).toBe(true);
+    }
+  });
+  it("leaves shower-door prices, bookings, photos and haggling alone", () => {
+    for (const t of ["無框拉門多少錢", "明天可以來看浴缸嗎", "浴室照片傳給你 大概多少", "整修可以算便宜一點嗎", "整修可以分期嗎"]) {
+      expect(isRenovationPriceQuestion(t), t).toBe(false);
     }
   });
 });
