@@ -312,7 +312,7 @@ describe("isRenovationPriceQuestion", () => {
     }
   });
   it("leaves shower-door prices, bookings and haggling alone", () => {
-    for (const t of ["無框拉門多少錢", "明天可以來看浴缸嗎", "整修可以算便宜一點嗎", "整修可以分期嗎", "我在台中"]) {
+    for (const t of ["無框拉門多少錢", "明天可以來看浴缸嗎", "整修可以算便宜一點嗎", "整修可以分期嗎", "我在台中", "師傅什麼時候可以來看 整修大概多少", "溪湖有到嗎 整間翻新多少"]) {
       expect(isRenovationPriceQuestion(t), t).toBe(false);
     }
   });

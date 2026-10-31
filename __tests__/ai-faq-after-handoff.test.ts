@@ -384,6 +384,17 @@ describe("rules shared with the simulation", () => {
     expect(second).toMatchObject({ kind: "silent" });
   });
 
+  it("leaves a nag that also asks something to the model", async () => {
+    setupKb("NEEDS_HUMAN", true);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("有的唷~鹿港有服務"));
+    const out = await handleFaqMessage({ ...msg, messageText: "師傅多久會回 鹿港有到嗎" });
+    expect(out).toMatchObject({ kind: "answered" });
+    expect(mockComplete).toHaveBeenCalled();
+  });
+
   it("asks about fixtures instead of photos the first time in a shower-door thread", async () => {
     setupKb("AI", false);
     mockPrisma.conversationMessage.findMany.mockResolvedValue([

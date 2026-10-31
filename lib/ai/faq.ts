@@ -366,6 +366,16 @@ function fixedReplyResult(name: string, model: string): FaqAi {
   };
 }
 
+/**
+ * A nag that also carries a real question ("多久會回 還有上山要加車資嗎")
+ * must not be answered with the waiting line alone (simulation: the
+ * question was left hanging). Long messages are never just a nag either.
+ */
+function asksSomethingElse(text: string): boolean {
+  const t = text.replace(/\s/g, "");
+  return [...t].length > 30 || /價|多少|錢|車資|有到|有跑|服務|可以嗎|幾點|哪天|什麼時候可以|款式|照片|保固|工期/.test(t);
+}
+
 /** "還沒回嗎", "有人在嗎", "師傅多久會回": the person is waiting on the owner. */
 const ASKING_FOR_REPLY =
   /(還沒|沒有|怎麼沒|什麼時候|幾時|多久|何時).{0,6}(回|理我|看到|有人)|(^|[^現])在嗎|有人嗎|有看到嗎|人呢|已讀|等很久|等多久|(快|趕快|盡快|儘快|趕緊).{0,4}回/u;
@@ -413,7 +423,7 @@ export function preReplyRule(
     return { kind: "silent" };
   }
   const replyTime = knowledgeBaseFixedReplies(knowledgeBase).get("回覆時間");
-  if (waitingOnOwner && replyTime && isAskingForReply(question)) {
+  if (waitingOnOwner && replyTime && isAskingForReply(question) && !asksSomethingElse(question)) {
     const saidAlready = earlier.some((m) => m.direction === "OUT_AI" && m.text === replyTime);
     return saidAlready ? { kind: "silent" } : { kind: "result", result: fixedReplyResult("回覆時間", "rule:reply-time") };
   }
@@ -510,7 +520,7 @@ export function isRenovationPriceQuestion(text: string, earlierInbound: string[]
   const shower = /拉門|淋浴門|隔屏|玻璃門/;
   const price = /多少|價|預算|費用|報價|錢|行情|範圍/;
   if (!price.test(t)) return false;
-  if (/折|便宜|殺價|比價|分期|刷卡|客人傳了|約|幾點|明天|今天|這週|這禮拜/.test(t)) return false;
+  if (/折|便宜|殺價|比價|分期|刷卡|客人傳了|約|幾點|明天|今天|這週|這禮拜|什麼時候|幾時|哪天|何時|來看|來量|可以來|過來|有到|有跑|有沒有到|有服務|服務到|車資/.test(t)) return false;
   if (work.test(t)) return true;
   // No work named here: it counts when the thread is about renovation, not a shower door.
   const thread = earlierInbound.join(" ");
