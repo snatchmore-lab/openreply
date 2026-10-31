@@ -466,3 +466,31 @@ describe("renovation price and repeated text", () => {
     expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
   });
 });
+
+describe("after 沒服務", () => {
+  const kb = ["[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹", "[沒服務地區] 台北", "[服務地區] 台中"].join(String.fromCharCode(10));
+  function setupKb() {
+    setup("AI", true);
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      id: "acc", instagramId: "ig", username: "yuben", workspaceId: "ws",
+      aiSettings: { faqEnabled: true, knowledgeBase: kb, handoffMessage: "轉給本人", hourlyLimitPerUser: 8, tone: "friendly", maxReplyChars: 300, notifyEmail: null, answerAfterHandoff: true },
+      workspace: { aiSettings: null },
+    });
+    // Newest first, as the query returns it.
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+      { direction: "IN", text: "台北四間 可施作嗎", messageId: "m0", createdAt: new Date(Date.now() - 90_000) },
+    ]);
+  }
+  it("stays quiet on a thumbs-up photo or a thanks", async () => {
+    setupKb();
+    expect(await handleFaqMessage({ ...msg, messageText: "(客人傳了照片)" })).toMatchObject({ kind: "silent" });
+    expect(await handleFaqMessage({ ...msg, messageId: "mid2", messageText: "好 謝謝" })).toMatchObject({ kind: "silent" });
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+  it("still answers a real follow-up question", async () => {
+    setupKb();
+    mockComplete.mockResolvedValue(answer("是阿~目前還沒規劃到那裏服務~"));
+    expect(await handleFaqMessage({ ...msg, messageText: "之後會開放嗎" })).toMatchObject({ kind: "answered" });
+  });
+});

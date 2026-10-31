@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { decideFaqReply, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -320,5 +320,14 @@ describe("isRenovationPriceQuestion", () => {
     expect(isRenovationPriceQuestion("能不能先給我大概的價格範圍", ["我想整間浴室翻新"])).toBe(true);
     expect(isRenovationPriceQuestion("能不能先給我大概的價格範圍", ["我想做無框拉門"])).toBe(false);
     expect(isRenovationPriceQuestion("浴室照片之後再說 先講馬桶大概多少", [])).toBe(true);
+  });
+});
+
+describe("isAcknowledgement", () => {
+  it("hears a nod", () => {
+    for (const t of ["好", "好的~", "謝謝您😊", "ok", "👍", "🙏🙏", "了解", "收到 謝謝"]) expect(isAcknowledgement(t), t).toBe(true);
+  });
+  it("hears a question", () => {
+    for (const t of ["好 那多少錢", "謝謝 那你們有到彰化嗎", "可以推薦別家嗎", "(客人傳了照片)"]) expect(isAcknowledgement(t), t).toBe(false);
   });
 });

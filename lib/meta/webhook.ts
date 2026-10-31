@@ -82,7 +82,7 @@ interface WebhookEntry {
       is_echo?: boolean;
       is_deleted?: boolean;
       is_unsupported?: boolean;
-      attachments?: Array<{ type?: string }>;
+      attachments?: Array<{ type?: string; payload?: { url?: string; sticker_id?: number } }>;
       sticker_id?: number;
     };
   }>;
@@ -253,10 +253,16 @@ export function parsePostbackEvents(
  */
 function pageMediaPlaceholder(
   object: string | undefined,
-  message: { attachments?: Array<{ type?: string }>; sticker_id?: number }
+  message: { attachments?: Array<{ type?: string; payload?: { url?: string; sticker_id?: number } }>; sticker_id?: number }
 ): string | undefined {
   if (object !== "page" || message.sticker_id) return undefined;
-  const types = (message.attachments ?? []).map((a) => a.type);
+  // The Messenger thumbs-up and other stickers arrive as an image attachment;
+  // sometimes the sticker id is only on the attachment, and sometimes only
+  // the CDN path (t39.1997-6 is Meta's sticker bucket) gives it away. One of
+  // those was handed to the owner as "(客人傳了照片)".
+  const attachments = message.attachments ?? [];
+  if (attachments.some((a) => a.payload?.sticker_id || /t39\.1997-6/.test(a.payload?.url ?? ""))) return undefined;
+  const types = attachments.map((a) => a.type);
   if (types.includes("image")) return "(客人傳了照片)";
   if (types.includes("video")) return "(客人傳了影片)";
   if (types.includes("audio")) return "(客人傳了語音)";

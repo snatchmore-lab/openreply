@@ -376,6 +376,18 @@ export function isAskingForReply(message: string): boolean {
 
 export type PreReplyRule = { kind: "result"; result: FaqAi } | { kind: "silent" } | null;
 
+/** "好", "謝謝", "ok", a lone emoji or sticker: a nod, not a question. */
+export function isAcknowledgement(text: string): boolean {
+  const bare = text.replace(/[\s\p{P}\p{S}\p{Emoji_Presentation}\p{Extended_Pictographic}~～]/gu, "");
+  if (!bare) return text.trim().length > 0;
+  return bare.length <= 6 && /^(好|好的|好喔|好哦|好啊|ok|okay|謝謝|謝謝你|謝謝您|感謝|了解|收到|嗯|嗯嗯|喔|哦|是|沒關係|沒事|知道了|辛苦了|哈|哈哈)+$/i.test(bare);
+}
+
+/** The webhook's stand-in for a photo, video, voice note, file or link. */
+export function isMediaPlaceholder(text: string): boolean {
+  return /^\(客人(傳了|分享了)[^)]*\)$/.test(text.trim());
+}
+
 /**
  * What is decided before the model is asked. Shared with the simulation so
  * it runs the same bot as production.
@@ -392,6 +404,13 @@ export function preReplyRule(
 ): PreReplyRule {
   if (isOutOfAreaRequest(question, knowledgeBase, earlier)) {
     return { kind: "result", result: OUT_OF_AREA_RESULT };
+  }
+  // Told "we do not serve there", the person sends a thumbs-up, a "謝謝" or a
+  // photo anyway: nothing to answer and nothing for the owner.
+  const noService = knowledgeBaseFixedReplies(knowledgeBase).get("沒服務");
+  const lastOut = [...earlier].reverse().find((m) => m.direction !== "IN");
+  if (noService && lastOut?.direction === "OUT_AI" && lastOut.text === noService && (isAcknowledgement(question) || isMediaPlaceholder(question))) {
+    return { kind: "silent" };
   }
   const replyTime = knowledgeBaseFixedReplies(knowledgeBase).get("回覆時間");
   if (waitingOnOwner && replyTime && isAskingForReply(question)) {

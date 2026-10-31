@@ -72,6 +72,8 @@ describe("Page photo messages", () => {
   it("ignores stickers and Instagram media", async () => {
     const { parseMessageEvents } = await import("@/lib/meta/webhook");
     expect(parseMessageEvents(event({ attachments: [{ type: "image" }], sticker_id: 369239263222822 }))).toEqual([]);
+    expect(parseMessageEvents(event({ attachments: [{ type: "image", payload: { sticker_id: 369239263222822 } }] }))).toEqual([]);
+    expect(parseMessageEvents(event({ attachments: [{ type: "image", payload: { url: "https://scontent.xx.fbcdn.net/v/t39.1997-6/39178562_1505197616293642_n.png" } }] }))).toEqual([]);
     expect(parseMessageEvents(event({ attachments: [{ type: "image" }] }, "instagram"))).toEqual([]);
   });
 });
