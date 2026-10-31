@@ -103,6 +103,8 @@ export interface LineRemindJob {
   conversationId: string;
   handoffAt: string;
   text: string;
+  /** Which reminder this is; missing means the one-hour one. */
+  after?: "1h" | "1d";
 }
 
 export type DmQueueJob =

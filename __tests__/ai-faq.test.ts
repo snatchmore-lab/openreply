@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { decideFaqReply, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { decideFaqReply, isAskingForReply, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -286,5 +286,18 @@ describe("Meta's own follow-up echoes", () => {
     expect(isMetaAutomationText("王道明，你好！來向你打聲招呼，你有任何問題想問嗎？", "")).toBe(true);
     expect(isMetaAutomationText("Hello~ 想幫你家浴室做哪些改變呢", "[Meta自動訊息] 想幫你家浴室做哪些改變呢")).toBe(true);
     expect(isMetaAutomationText("明天下午兩點方便過去嗎", "")).toBe(false);
+  });
+});
+
+describe("isAskingForReply", () => {
+  it("recognises a person waiting on the owner", () => {
+    for (const t of ["師傅多久會回", "還沒回嗎", "有人在嗎", "怎麼沒人理我", "什麼時候會回覆", "在嗎?", "已讀不回喔", "要等多久"]) {
+      expect(isAskingForReply(t), t).toBe(true);
+    }
+  });
+  it("leaves ordinary questions alone", () => {
+    for (const t of ["工期多久", "可以現在嗎", "多少錢", "我在台中", "門檻多久會裝好", "拉門多久能裝"]) {
+      expect(isAskingForReply(t), t).toBe(false);
+    }
   });
 });

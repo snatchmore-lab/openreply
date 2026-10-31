@@ -328,3 +328,83 @@ describe("same answer twice", () => {
     expect(mockSend).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("rules shared with the simulation", () => {
+  const kb = [
+    "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹",
+    "[沒服務地區] 台北",
+    "[服務地區] 台中",
+    "[偏遠鄉鎮] 泰安 阿里山",
+    "[固定回覆:回覆時間] 師傅看到會盡快回覆您",
+    "[固定回覆:先問配件] 浴室的龍頭、馬桶或配件",
+    "[固定回覆:先問配件] 有沒有想一起換呢😊",
+  ].join(String.fromCharCode(10));
+  function setupKb(status: "AI" | "NEEDS_HUMAN", answerAfterHandoff: boolean) {
+    setup(status, answerAfterHandoff);
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      id: "acc",
+      instagramId: "ig",
+      username: "yuben",
+      workspaceId: "ws",
+      aiSettings: {
+        faqEnabled: true,
+        knowledgeBase: kb,
+        handoffMessage: "轉給本人",
+        hourlyLimitPerUser: 8,
+        tone: "friendly",
+        maxReplyChars: 300,
+        notifyEmail: null,
+        answerAfterHandoff,
+      },
+      workspace: { aiSettings: null },
+    });
+  }
+
+  it("hands a remote town to the owner without asking the model", async () => {
+    setupKb("AI", true);
+    const out = await handleFaqMessage({ ...msg, messageText: "我在泰安 想做拉門" });
+    expect(out).toMatchObject({ kind: "handoff", text: "轉給本人" });
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("answers 回覆時間 once to a person waiting on the owner, then stays quiet", async () => {
+    setupKb("NEEDS_HUMAN", true);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    const first = await handleFaqMessage({ ...msg, messageText: "師傅多久會回阿" });
+    expect(first).toMatchObject({ kind: "answered", text: "師傅看到會盡快回覆您" });
+    expect(mockComplete).not.toHaveBeenCalled();
+
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "OUT_AI", text: "轉給本人", messageId: null, createdAt: new Date(Date.now() - 120_000) },
+      { direction: "OUT_AI", text: "師傅看到會盡快回覆您", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    const second = await handleFaqMessage({ ...msg, messageId: "mid2", messageText: "還沒回嗎" });
+    expect(second).toMatchObject({ kind: "silent" });
+  });
+
+  it("asks about fixtures instead of photos the first time in a shower-door thread", async () => {
+    setupKb("AI", false);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "IN", text: "我想做淋浴拉門", messageId: "m0", createdAt: new Date(Date.now() - 90_000) },
+      { direction: "OUT_AI", text: "好的~請問是在哪一區呢", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("好的~" + String.fromCharCode(10) + "方便傳幾張浴室照片給師傅看看嗎"));
+    const out = await handleFaqMessage({ ...msg, messageText: "台中" });
+    expect(out).toMatchObject({ kind: "answered", text: "好的~" + String.fromCharCode(10) + "浴室的龍頭、馬桶或配件" + String.fromCharCode(10) + "有沒有想一起換呢😊" });
+  });
+
+  it("asks for photos as written once fixtures were covered", async () => {
+    setupKb("AI", false);
+    mockPrisma.conversationMessage.findMany.mockResolvedValue([
+      { direction: "IN", text: "我想做淋浴拉門", messageId: "m0", createdAt: new Date(Date.now() - 90_000) },
+      { direction: "OUT_AI", text: "浴室的龍頭、馬桶或配件有沒有想一起換呢", messageId: null, createdAt: new Date(Date.now() - 60_000) },
+    ]);
+    mockComplete.mockResolvedValue(answer("方便傳幾張浴室照片給師傅看看嗎"));
+    const out = await handleFaqMessage({ ...msg, messageText: "不用" });
+    const text = out.kind === "answered" ? out.text : "";
+    expect(text).toContain("照片");
+    expect(text).not.toContain("龍頭");
+  });
+});

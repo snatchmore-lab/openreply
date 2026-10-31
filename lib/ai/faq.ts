@@ -114,8 +114,9 @@ export async function previewFaqAnswer(input: {
     return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
   }
   const maxChars = Math.min(1000, Math.max(50, input.settings.maxReplyChars));
-  const result = isOutOfAreaRequest(input.question, input.settings.knowledgeBase, [])
-    ? OUT_OF_AREA_RESULT
+  const pre = preReplyRule(input.question, input.settings.knowledgeBase, [], false);
+  const result = pre?.kind === "result"
+    ? pre.result
     : await completeJson({
       feature: "faq",
       workspaceId: input.workspaceId,
@@ -317,7 +318,7 @@ function placeList(knowledgeBase: string, tag: string): string[] {
 }
 
 /** The model's output for an out-of-area request, written by the rule above. */
-const OUT_OF_AREA_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
+const OUT_OF_AREA_RESULT: FaqAi = {
   ok: true,
   result: { answer: "", confident: true, crisis: false, images: [], fixedReply: "沒服務" },
   cached: false,
@@ -326,13 +327,145 @@ const OUT_OF_AREA_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
 };
 
 /** Not an answer: the per-person hourly cap is reached, so the owner takes over. */
-const HOURLY_LIMIT_RESULT: AiResult<z.infer<typeof FaqOutput>> = {
+const HOURLY_LIMIT_RESULT: FaqAi = {
   ok: true,
   result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
   cached: false,
   model: "rule:hourly-limit",
   usage: null,
 };
+
+type FaqAi = Extract<AiResult<z.infer<typeof FaqOutput>>, { ok: true }>;
+
+/**
+ * Towns inside the served counties the owner wants to confirm himself, as a
+ * knowledge-base line "[偏遠鄉鎮] 泰安 南庄 …". The model, asked about one,
+ * tended to say "有在跑"; the owner asked for these to come straight to him.
+ */
+export function isRemoteTownRequest(message: string, knowledgeBase: string): boolean {
+  const text = message.replace(/臺/g, "台");
+  return placeList(knowledgeBase, "偏遠鄉鎮").some((place) => text.includes(place));
+}
+
+/** Not an answer: the town needs the owner's say-so, so the thread is his. */
+const REMOTE_TOWN_RESULT: FaqAi = {
+  ok: true,
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  cached: false,
+  model: "rule:remote-town",
+  usage: null,
+};
+
+function fixedReplyResult(name: string, model: string): FaqAi {
+  return {
+    ok: true,
+    result: { answer: "", confident: true, crisis: false, images: [], fixedReply: name },
+    cached: false,
+    model,
+    usage: null,
+  };
+}
+
+/** "還沒回嗎", "有人在嗎", "師傅多久會回": the person is waiting on the owner. */
+const ASKING_FOR_REPLY =
+  /(還沒|沒有|怎麼沒|什麼時候|幾時|多久|何時).{0,6}(回|理我|看到|有人)|(^|[^現])在嗎|有人嗎|有看到嗎|人呢|回一下|回我|已讀|等很久|等多久/u;
+
+export function isAskingForReply(message: string): boolean {
+  return ASKING_FOR_REPLY.test(message.replace(/\s/g, ""));
+}
+
+export type PreReplyRule = { kind: "result"; result: FaqAi } | { kind: "silent" } | null;
+
+/**
+ * What is decided before the model is asked. Shared with the simulation so
+ * it runs the same bot as production.
+ * - a message naming only unserved places → [固定回覆:沒服務], once
+ * - while the owner has the thread, "還沒回嗎" → [固定回覆:回覆時間] once,
+ *   then quiet (the owner is already alerted; nagging him again helps nobody)
+ * - a town the owner wants to confirm himself → handoff
+ */
+export function preReplyRule(
+  question: string,
+  knowledgeBase: string,
+  earlier: { direction: string; text: string }[],
+  waitingOnOwner: boolean
+): PreReplyRule {
+  if (isOutOfAreaRequest(question, knowledgeBase, earlier)) {
+    return { kind: "result", result: OUT_OF_AREA_RESULT };
+  }
+  const replyTime = knowledgeBaseFixedReplies(knowledgeBase).get("回覆時間");
+  if (waitingOnOwner && replyTime && isAskingForReply(question)) {
+    const saidAlready = earlier.some((m) => m.direction === "OUT_AI" && m.text === replyTime);
+    return saidAlready ? { kind: "silent" } : { kind: "result", result: fixedReplyResult("回覆時間", "rule:reply-time") };
+  }
+  if (isRemoteTownRequest(question, knowledgeBase)) return { kind: "result", result: REMOTE_TOWN_RESULT };
+  return null;
+}
+
+type Decision = ReturnType<typeof decideFaqReply>;
+
+/**
+ * What is checked after the model (or a rule above) decided. Shared with the
+ * simulation.
+ * - never the same text twice in a row: a person who asks the same thing
+ *   again gets the owner, which is what the knowledge base asks for
+ *   (追問同樣的事 → 請師傅回覆). Simulation showed the same 線上報價 line
+ *   going out three times to one person. The out-of-area replies are left
+ *   alone: repeating "we do not serve there" is no reason to wake the owner.
+ * - a shower-door thread is asked about fixtures ([固定回覆:先問配件])
+ *   before it is asked for photos. The knowledge base says so and the model
+ *   skipped it often; the photo request lines are swapped for the question.
+ */
+export function applyReplyRules(
+  decision: Decision,
+  input: {
+    question: string;
+    earlier: { direction: string; text: string }[];
+    settings: { handoffMessage: string; knowledgeBase: string };
+  }
+): Decision {
+  const fixed = knowledgeBaseFixedReplies(input.settings.knowledgeBase);
+  const lastOut = [...input.earlier].reverse().find((m) => m.direction !== "IN");
+  const outOfArea = ["沒服務", "開放"].map((name) => fixed.get(name));
+  if (
+    decision.kind === "answered" &&
+    lastOut?.direction === "OUT_AI" &&
+    sameWords(lastOut.text, decision.text) &&
+    !outOfArea.includes(decision.text)
+  ) {
+    return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
+  }
+
+  const askFixtures = fixed.get("先問配件");
+  if (
+    askFixtures &&
+    decision.kind === "answered" &&
+    ![...fixed.values()].includes(decision.text) &&
+    asksForPhotos(decision.text)
+  ) {
+    const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
+    const outbound = input.earlier.filter((m) => m.direction !== "IN").map((m) => m.text);
+    const showerDoor = inbound.some((t) => /拉門|淋浴門|玻璃門|隔屏|浴簾/.test(t));
+    const fixturesCovered =
+      outbound.some((t) => /龍頭|馬桶|配件/.test(t)) ||
+      inbound.some((t) => /龍頭|馬桶|配件|臉盆|浴櫃|設備|整修|翻新/.test(t));
+    const photoSent = inbound.some((t) => t.includes("客人傳了照片"));
+    if (showerDoor && !fixturesCovered && !photoSent) {
+      // Keep what comes before the photo request, cut back to a sentence end
+      // (the sanitizer wraps long sentences over several lines), drop the
+      // request and whatever followed it, then ask about fixtures.
+      const lines = decision.text.split("\n");
+      const kept = lines.slice(0, lines.findIndex((line) => line.includes("照片")));
+      while (kept.length && !/[~～唷呢嗎喔啊呀😊🥹😂👌)）!！?？_]$/u.test(kept[kept.length - 1])) kept.pop();
+      return { kind: "answered", text: [...kept, askFixtures].join("\n") };
+    }
+  }
+  return decision;
+}
+
+function asksForPhotos(text: string): boolean {
+  return text.includes("照片") && /傳|拍|提供|給/.test(text);
+}
 
 /** Meta's default ad-template follow-up line ("…你好！來向你打聲招呼…"). */
 const META_AUTOMATION_PHRASES = ["來向你打聲招呼"];
@@ -717,10 +850,12 @@ export async function handleFaqMessage(input: {
   const tone = normalizeTone(settings.tone);
   const maxChars = Math.min(1000, Math.max(50, settings.maxReplyChars));
 
+  const pre = limitReached ? null : preReplyRule(question, settings.knowledgeBase, earlier, afterHandoff);
+  if (pre?.kind === "silent") return { kind: "silent", reason: "not-ai-state" };
   const result = limitReached
     ? HOURLY_LIMIT_RESULT
-    : isOutOfAreaRequest(question, settings.knowledgeBase, earlier)
-    ? OUT_OF_AREA_RESULT
+    : pre?.kind === "result"
+    ? pre.result
     : await completeJson({
       feature: "faq",
       workspaceId: account.workspaceId,
@@ -744,24 +879,7 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "ai-unavailable" };
   }
 
-  let decision = decideFaqReply(result.result, settings);
-
-  // Never send the same text twice in a row. A person who asks the same thing
-  // again after an answer or a fixed reply gets the owner instead, which is
-  // what the knowledge base asks for (追問同樣的事 → 請師傅回覆). Simulation
-  // showed the same 線上報價 line going out three times to one person. The
-  // out-of-area replies are left alone: repeating "we do not serve there" is
-  // not a reason to wake the owner.
-  const lastOut = [...earlier].reverse().find((m) => m.direction !== "IN");
-  const outOfArea = ["沒服務", "開放"].map((name) => knowledgeBaseFixedReplies(settings.knowledgeBase).get(name));
-  if (
-    decision.kind === "answered" &&
-    lastOut?.direction === "OUT_AI" &&
-    sameWords(lastOut.text, decision.text) &&
-    !outOfArea.includes(decision.text)
-  ) {
-    decision = { kind: "handoff", text: settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
-  }
+  let decision = applyReplyRules(decideFaqReply(result.result, settings), { question, earlier, settings });
 
   // Already handed off: never send the handoff line twice in a row. If the
   // bot has answered other things since, a new request that needs the owner

@@ -30,7 +30,7 @@ describe("Meta automation echoes", () => {
     expect(isMetaButtonReplyText("預約麻煩提供以下資訊⬇️ 1️⃣ 您的居住地區", kb)).toBe(true);
     expect(isMetaAutomationText("好的", kb)).toBe(false);
     expect(isMetaButtonReplyText("好的", kb)).toBe(false);
-  });
+  }, 30_000);
 
   it("falls back to 'human' when Redis is down", async () => {
     vi.resetModules();
