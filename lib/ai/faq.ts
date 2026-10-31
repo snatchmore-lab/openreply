@@ -442,7 +442,7 @@ export function applyReplyRules(
   // area). Once; the person who still insists on a number gets the owner.
   const renovation = fixed.get("整修報價");
   const renovationKnown = fixed.get("整修報價-已知地區");
-  if (decision.kind === "handoff" && renovation && isRenovationPriceQuestion(input.question)) {
+  if (decision.kind === "handoff" && renovation && isRenovationPriceQuestion(input.question, inbound)) {
     const said = outbound.some((m) => sameWords(m.text, renovation) || (renovationKnown ? sameWords(m.text, renovationKnown) : false));
     if (!said) {
       const areaKnown = inbound.some((t) => mentionsPlace(t, input.settings.knowledgeBase));
@@ -479,14 +479,23 @@ function asksForPhotos(text: string): boolean {
   return text.includes("照片") && /傳|拍|提供|給/.test(text);
 }
 
-/** "拆浴缸改乾濕分離大概多少": a price question about work only a visit can price. */
-export function isRenovationPriceQuestion(text: string): boolean {
+/**
+ * "拆浴缸改乾濕分離大概多少": a price question about work only a visit can
+ * price. The work may have been named earlier ("能不能先給個範圍" after
+ * "想整間翻新"), so the thread's customer messages count too. Haggling,
+ * payment terms and bookings stay with the owner.
+ */
+export function isRenovationPriceQuestion(text: string, earlierInbound: string[] = []): boolean {
   const t = text.replace(/\s/g, "");
-  return (
-    /多少|價|預算|費用|報價|錢|行情/.test(t) &&
-    /整修|翻新|乾濕分離|浴缸|防水|馬桶|臉盆|浴櫃|鏡櫃|設備|磁磚|地磚|整間/.test(t) &&
-    !/照片|約|幾點|明天|今天|折|便宜|殺價|比價|分期|刷卡|客人傳了/.test(t)
-  );
+  const work = /整修|翻新|乾濕分離|浴缸|防水|馬桶|臉盆|浴櫃|鏡櫃|設備|磁磚|地磚|整間|管線|漏水/;
+  const shower = /拉門|淋浴門|隔屏|玻璃門/;
+  const price = /多少|價|預算|費用|報價|錢|行情|範圍/;
+  if (!price.test(t)) return false;
+  if (/折|便宜|殺價|比價|分期|刷卡|客人傳了|約|幾點|明天|今天|這週|這禮拜/.test(t)) return false;
+  if (work.test(t)) return true;
+  // No work named here: it counts when the thread is about renovation, not a shower door.
+  const thread = earlierInbound.join(" ");
+  return !shower.test(t) && work.test(thread) && !shower.test(thread);
 }
 
 /** The person has named where they are: a listed place, or a short "台中西屯區". */

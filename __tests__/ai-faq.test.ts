@@ -311,9 +311,14 @@ describe("isRenovationPriceQuestion", () => {
       expect(isRenovationPriceQuestion(t), t).toBe(true);
     }
   });
-  it("leaves shower-door prices, bookings, photos and haggling alone", () => {
-    for (const t of ["無框拉門多少錢", "明天可以來看浴缸嗎", "浴室照片傳給你 大概多少", "整修可以算便宜一點嗎", "整修可以分期嗎"]) {
+  it("leaves shower-door prices, bookings and haggling alone", () => {
+    for (const t of ["無框拉門多少錢", "明天可以來看浴缸嗎", "整修可以算便宜一點嗎", "整修可以分期嗎", "我在台中"]) {
       expect(isRenovationPriceQuestion(t), t).toBe(false);
     }
+  });
+  it("reads the work from earlier messages when the question only asks for a range", () => {
+    expect(isRenovationPriceQuestion("能不能先給我大概的價格範圍", ["我想整間浴室翻新"])).toBe(true);
+    expect(isRenovationPriceQuestion("能不能先給我大概的價格範圍", ["我想做無框拉門"])).toBe(false);
+    expect(isRenovationPriceQuestion("浴室照片之後再說 先講馬桶大概多少", [])).toBe(true);
   });
 });
