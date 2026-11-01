@@ -428,7 +428,39 @@ export function preReplyRule(
     return saidAlready ? { kind: "silent" } : { kind: "result", result: fixedReplyResult("回覆時間", "rule:reply-time") };
   }
   if (isRemoteTownRequest(question, knowledgeBase)) return { kind: "result", result: REMOTE_TOWN_RESULT };
+  // Booking flow: area asked, then "which work" ([固定回覆:預約問項目]).
+  // The person names the work and asks nothing else: that is the owner's
+  // cue to arrange a time. The model kept going (fixtures, photos) instead.
+  const askItems = knowledgeBaseFixedReplies(knowledgeBase).get("預約問項目");
+  if (askItems && lastOut?.direction === "OUT_AI" && lastOut.text === askItems && isBookingThread(earlier, knowledgeBase) && namesWork(question) && !asksSomething(question)) {
+    return { kind: "result", result: BOOKING_ITEMS_RESULT };
+  }
   return null;
+}
+
+const BOOKING_ITEMS_RESULT: FaqAi = {
+  ok: true,
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  cached: false,
+  model: "rule:booking-items",
+  usage: null,
+};
+
+/** The thread is about booking a visit: the 預約 line went out, or the person asked for one. */
+function isBookingThread(earlier: { direction: string; text: string }[], knowledgeBase: string): boolean {
+  const booking = knowledgeBaseFixedReplies(knowledgeBase).get("預約");
+  if (booking && earlier.some((m) => m.direction === "OUT_AI" && m.text === booking)) return true;
+  return earlier.some((m) => m.direction === "IN" && /預約|丈量|約(時間|師傅|個|一下)|來看|來量|過來看|現場看/.test(m.text));
+}
+
+/** "拆浴缸改淋浴", "整間翻新": names the work to be done. */
+function namesWork(text: string): boolean {
+  return /拉門|淋浴|玻璃|隔屏|浴缸|乾濕|浴櫃|臉盆|馬桶|鏡櫃|龍頭|設備|翻新|整修|整間|磁磚|防水|漏水|天花板|門檻|浴室門|全部/.test(text);
+}
+
+/** A question in the same message: leave it to the model so the question gets answered too. */
+function asksSomething(text: string): boolean {
+  return /[?？]|嗎|多少|價|錢|怎麼|什麼時候|幾點|哪天|何時|要不要|可不可以|能不能|有沒有|保固|工期|多久/.test(text);
 }
 
 type Decision = ReturnType<typeof decideFaqReply>;

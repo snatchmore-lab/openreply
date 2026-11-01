@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, preReplyRule, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -359,5 +359,42 @@ describe("applyReplyRules: the same ad button twice", () => {
     ];
     const out = applyReplyRules({ kind: "answered", text: "都是請師傅免費到府丈量後現場報價唷" }, { question: "無框的多少", earlier, settings });
     expect(out).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+});
+
+describe("preReplyRule: booking flow, work named", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:預約] 好的~幫您預約師傅免費到府丈量討論~",
+    "[固定回覆:預約] 請問是在哪個縣市/哪一區呢?",
+    "[固定回覆:預約問項目] 好的~請問浴室想做哪些項目呢?",
+    "[固定回覆:預約問項目] 例如加裝淋浴拉門、拆浴缸改淋浴",
+    "[服務地區] 彰化",
+  ].join(nl);
+  const booking = "好的~幫您預約師傅免費到府丈量討論~" + nl + "請問是在哪個縣市/哪一區呢?";
+  const askItems = "好的~請問浴室想做哪些項目呢?" + nl + "例如加裝淋浴拉門、拆浴缸改淋浴";
+  const thread = [
+    { direction: "IN", text: "預約免費到府丈量" },
+    { direction: "OUT_AI", text: booking },
+    { direction: "IN", text: "彰化伸港" },
+    { direction: "OUT_AI", text: askItems },
+  ];
+
+  it("hands the named work to the owner", () => {
+    const out = preReplyRule("想拆浴缸改淋浴", kb, thread, false);
+    expect(out).toMatchObject({ kind: "result", result: { model: "rule:booking-items", result: { confident: false } } });
+  });
+
+  it("leaves a question in the answer to the model", () => {
+    expect(preReplyRule("拉門大概多少", kb, thread, false)).toBeNull();
+    expect(preReplyRule("淋浴拉門 這週六可以嗎", kb, thread, false)).toBeNull();
+  });
+
+  it("does nothing outside a booking thread", () => {
+    const notBooking = [
+      { direction: "IN", text: "我有浴室整修需求" },
+      { direction: "OUT_AI", text: askItems },
+    ];
+    expect(preReplyRule("想換浴櫃", kb, notBooking, false)).toBeNull();
   });
 });
