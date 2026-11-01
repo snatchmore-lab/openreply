@@ -514,6 +514,33 @@ export function applyReplyRules(
     return { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
   }
 
+  const handoffText = input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE;
+
+  // Told 沒服務, the person asks on ("可以視訊評估嗎", "我自己去店裡拿呢")
+  // and the model would hand off: the owner cannot help there either, and a
+  // handoff line reads as "maybe". [固定回覆:開放] once; after that the owner
+  // may decide. A served place named in the message is a change of plan.
+  const noService = fixed.get("沒服務");
+  const open = fixed.get("開放");
+  if (
+    decision.kind === "handoff" &&
+    noService &&
+    open &&
+    outbound.some((m) => m.direction === "OUT_AI" && sameWords(m.text, noService)) &&
+    !outbound.some((m) => sameWords(m.text, open)) &&
+    !mentionsServedPlace(input.question, input.settings.knowledgeBase)
+  ) {
+    return { kind: "answered", text: open };
+  }
+
+  // "師傅打給我", "我留電話 0912…": the person wants the owner to call. The
+  // knowledge base says that goes to the owner; the model kept answering
+  // with the owner's own number and LINE instead (simulation, 65 high
+  // "該轉沒轉" per 1000 threads, this the commonest).
+  if (decision.kind === "answered" && wantsCallback(input.question, input.settings.knowledgeBase) && !outOfArea.includes(decision.text)) {
+    return { kind: "handoff", text: handoffText };
+  }
+
   // A price question about renovation work (not a shower door) that the
   // model would hand off: the knowledge base says to explain that only a
   // site visit can price it ([固定回覆:整修報價], or the version for a known
@@ -551,6 +578,20 @@ export function applyReplyRules(
     }
   }
   return decision;
+}
+
+/** The person asks to be called, or leaves a number. "可以打給師傅嗎" is not this. */
+export function wantsCallback(text: string, knowledgeBase = ""): boolean {
+  const t = text.replace(/\s/g, "");
+  if (/打給我|打電話給我|打來|回電|回撥|來電給|(聯絡|聯繫|連絡)我|電話給(你|妳|您)|留(個|一下)?(電話|手機|號碼)|我的?(電話|手機)(是|：|:|號碼)?0?9|call我/i.test(t)) return true;
+  // A number in the message is the person's own unless the knowledge base lists it (the owner's).
+  const kbDigits = knowledgeBase.replace(/[-\s]/g, "");
+  return [...t.matchAll(/09\d{2}-?\d{3}-?\d{3}/g)].some((m) => !kbDigits.includes(m[0].replace(/-/g, "")));
+}
+
+function mentionsServedPlace(text: string, knowledgeBase: string): boolean {
+  const t = text.replace(/臺/g, "台");
+  return placeList(knowledgeBase, "服務地區").some((p) => t.includes(p));
 }
 
 function asksForPhotos(text: string): boolean {

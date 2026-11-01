@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, preReplyRule, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -400,5 +400,51 @@ describe("preReplyRule: booking flow, work named", () => {
       { direction: "OUT_AI", text: askItems },
     ];
     expect(preReplyRule("想換浴櫃", kb, notBooking, false)).toBeNull();
+  });
+});
+
+describe("wantsCallback", () => {
+  it("hears a request to be called", () => {
+    for (const t of ["師傅打給我", "可以打電話給我嗎", "我留電話 0912345678", "我的電話0988123456 麻煩回電", "有空聯絡我", "電話給你 0933-222-111", "請師傅回撥"]) expect(wantsCallback(t), t).toBe(true);
+  });
+  it("ignores asking whether they may call the owner", () => {
+    const kb = "[固定回覆:回覆時間] 或打 0988-084170 給師傅😊";
+    for (const t of ["可以打給師傅嗎", "我直接打0988-084170可以嗎", "師傅電話幾號", "無框拉門多少錢", "我在台中"]) expect(wantsCallback(t, kb), t).toBe(false);
+  });
+});
+
+describe("applyReplyRules: callback and after 沒服務", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹",
+    "[固定回覆:開放] 是阿~目前還沒規劃到那裏服務~",
+    "[固定回覆:開放] 之後如果有開放",
+    "[沒服務地區] 台北 新北",
+    "[服務地區] 台中 彰化",
+  ].join(nl);
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+  const open = "是阿~目前還沒規劃到那裏服務~" + nl + "之後如果有開放";
+
+  it("hands a callback request to the owner even when the model answered", () => {
+    const out = applyReplyRules({ kind: "answered", text: "可以直接打 0988-084170 給師傅😊" }, { question: "師傅有空打給我 0912345678", earlier: [], settings });
+    expect(out).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+
+  it("answers a follow-up after 沒服務 with 開放 once, then leaves it", () => {
+    const earlier = [
+      { direction: "IN", text: "台北 四間浴室" },
+      { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹" },
+    ];
+    expect(applyReplyRules({ kind: "handoff", text: "轉給本人" }, { question: "可以視訊評估嗎", earlier, settings })).toEqual({ kind: "answered", text: open });
+    const later = [...earlier, { direction: "IN", text: "可以視訊評估嗎" }, { direction: "OUT_AI", text: open }];
+    expect(applyReplyRules({ kind: "handoff", text: "轉給本人" }, { question: "那我自己去店裡拿呢", earlier: later, settings })).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+
+  it("lets a change to a served place through", () => {
+    const earlier = [
+      { direction: "IN", text: "台北" },
+      { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹" },
+    ];
+    expect(applyReplyRules({ kind: "handoff", text: "轉給本人" }, { question: "那我台中的房子呢 可以約嗎", earlier, settings })).toEqual({ kind: "handoff", text: "轉給本人" });
   });
 });
