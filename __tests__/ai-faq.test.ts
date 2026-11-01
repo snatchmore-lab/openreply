@@ -242,6 +242,10 @@ describe("fixedReply field", () => {
   it("sends the named fixed reply even when the answer text is empty", () => {
     expect(decideFaqReply({ answer: "", confident: true, fixedReply: "線上報價" }, s)).toEqual({ kind: "answered", text: "目前沒有提供線上報價~" });
     expect(decideFaqReply({ answer: "", confident: false, fixedReply: "線上報價" }, s).kind).toBe("answered");
+    // Option B: one extra line for the second thing asked in the same message.
+    expect(decideFaqReply({ answer: "", confident: true, fixedReply: "線上報價", extraLine: "鹿港有服務唷" }, s)).toEqual({ kind: "answered", text: "目前沒有提供線上報價~\n鹿港有服務唷" });
+    expect(decideFaqReply({ answer: "", confident: true, fixedReply: "線上報價", extraLine: "  " }, s)).toEqual({ kind: "answered", text: "目前沒有提供線上報價~" });
+    expect(decideFaqReply({ answer: "", confident: true, fixedReply: "線上報價", extraLine: "目前沒有提供線上報價" }, s)).toEqual({ kind: "answered", text: "目前沒有提供線上報價~" });
   });
   it("hands off when the name is unknown and the model was unsure", () => {
     expect(decideFaqReply({ answer: "", confident: false, fixedReply: "不存在" }, s).kind).toBe("handoff");

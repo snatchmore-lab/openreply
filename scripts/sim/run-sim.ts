@@ -193,7 +193,7 @@ function botRequest(c: Convo, i: number): Req | null {
 function applyBotDecision(c: Convo, raw: string | undefined) {
   const last = c.turns[c.turns.length - 1];
   const earlier = c.turns.slice(0, -1).map(asHistory);
-  let output: { answer: string; confident: boolean; crisis?: boolean; fixedReply?: string; images?: string[] } | null = null;
+  let output: { answer: string; confident: boolean; crisis?: boolean; fixedReply?: string; extraLine?: string; images?: string[] } | null = null;
   const pre = preReplyRule(last.text, KB, earlier, waitingOnOwner(c));
   if (pre?.kind === "silent") {
     c.turns.push({ role: "bot", text: "[機器人保持沉默，等師傅回覆]", kind: "silent" });

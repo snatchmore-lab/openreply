@@ -59,6 +59,8 @@ const FaqOutput = z.object({
   images: z.array(z.string()),
   /** NAME of a [固定回覆:NAME] the knowledge base says to use, or "". */
   fixedReply: z.string(),
+  /** With a fixed reply: one line answering a second question in the same message, or "". */
+  extraLine: z.string().optional().default(""),
 });
 
 const MAX_IMAGES_PER_REPLY = 3;
@@ -248,7 +250,7 @@ export function knowledgeBaseFixedReplies(knowledgeBase: string): Map<string, st
 }
 
 export function decideFaqReply(
-  output: { answer: string; confident: boolean; crisis?: boolean; fixedReply?: string } | null,
+  output: { answer: string; confident: boolean; crisis?: boolean; fixedReply?: string; extraLine?: string } | null,
   settings: Pick<FaqSettings, "handoffMessage" | "maxReplyChars" | "maxLineWidth"> & { knowledgeBase?: string }
 ):
   | { kind: "answered"; text: string }
@@ -262,7 +264,13 @@ export function decideFaqReply(
   // the knowledge base said to use it.
   const fixedReplies = knowledgeBaseFixedReplies(settings.knowledgeBase ?? "");
   const picked = fixedReplies.get(output.fixedReply?.trim() ?? "");
-  if (picked) return { kind: "answered", text: picked };
+  if (picked) {
+    // The owner chose: a fixed reply may carry one extra line for the
+    // second thing the person asked in the same message (simulation: the
+    // canned line alone left "有到鹿港嗎" unanswered 150 times per 1000).
+    const extra = output.extraLine?.trim() ? sanitizeAnswer(output.extraLine, settings.maxReplyChars, settings.maxLineWidth) : null;
+    return { kind: "answered", text: extra && !sameWords(extra, picked) ? `${picked}\n${extra}` : picked };
+  }
   if (!output.confident) return { kind: "handoff", text: handoff };
   // {{NAME}}, or the bare NAME the model sometimes sends instead.
   const fixedName = output.answer.trim().match(/^\{\{(.+)\}\}$/)?.[1]?.trim();
@@ -320,7 +328,7 @@ function placeList(knowledgeBase: string, tag: string): string[] {
 /** The model's output for an out-of-area request, written by the rule above. */
 const OUT_OF_AREA_RESULT: FaqAi = {
   ok: true,
-  result: { answer: "", confident: true, crisis: false, images: [], fixedReply: "沒服務" },
+  result: { answer: "", confident: true, crisis: false, images: [], fixedReply: "沒服務", extraLine: "" },
   cached: false,
   model: "rule:out-of-area",
   usage: null,
@@ -329,7 +337,7 @@ const OUT_OF_AREA_RESULT: FaqAi = {
 /** Not an answer: the per-person hourly cap is reached, so the owner takes over. */
 const HOURLY_LIMIT_RESULT: FaqAi = {
   ok: true,
-  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "", extraLine: "" },
   cached: false,
   model: "rule:hourly-limit",
   usage: null,
@@ -350,7 +358,7 @@ export function isRemoteTownRequest(message: string, knowledgeBase: string): boo
 /** Not an answer: the town needs the owner's say-so, so the thread is his. */
 const REMOTE_TOWN_RESULT: FaqAi = {
   ok: true,
-  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "", extraLine: "" },
   cached: false,
   model: "rule:remote-town",
   usage: null,
@@ -359,7 +367,7 @@ const REMOTE_TOWN_RESULT: FaqAi = {
 function fixedReplyResult(name: string, model: string): FaqAi {
   return {
     ok: true,
-    result: { answer: "", confident: true, crisis: false, images: [], fixedReply: name },
+    result: { answer: "", confident: true, crisis: false, images: [], fixedReply: name, extraLine: "" },
     cached: false,
     model,
     usage: null,
@@ -440,7 +448,7 @@ export function preReplyRule(
 
 const BOOKING_ITEMS_RESULT: FaqAi = {
   ok: true,
-  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "" },
+  result: { answer: "", confident: false, crisis: false, images: [], fixedReply: "", extraLine: "" },
   cached: false,
   model: "rule:booking-items",
   usage: null,

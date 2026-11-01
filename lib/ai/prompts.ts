@@ -102,6 +102,7 @@ Rules:
 - Keep the answer within the character limit. Plain text only: no markdown, no bullet lists, no headings.
 - Never use the Chinese full stop 「。」.
 - The knowledge base may define fixed replies, one or more lines each starting with [固定回覆:NAME]. When the knowledge base says to use one, set fixedReply to NAME, confident=true, and answer to {{NAME}}; the system sends the owner's exact text. A fixed reply takes priority over handing off. In every other case fixedReply is an empty string.
+- When you use a fixed reply and the same message also asks a second thing that the knowledge base answers, put that answer in extraLine: one line, within the line width, from the knowledge base only, no greeting, no repetition of the fixed reply. If the knowledge base does not answer the second thing, or says it goes to the owner, leave extraLine empty. In every other case extraLine is an empty string.
 - When the knowledge base says how to reply in a situation (including a fixed reply), follow it before anything else. Otherwise, if your answer would only tell the person that the owner or staff will get back to them, that is a handoff: set confident=false and leave answer empty.
 - Put each phrase on its own line. Every line is at most the "Line width" given with the message, in Chinese characters (two English letters or digits count as one character). Break where a person naturally pauses, between whole phrases, never inside a word or a fixed phrase. Never use a space to separate phrases; start a new line instead. Example layout (line width 10):
 能力盤點完全免費喔
