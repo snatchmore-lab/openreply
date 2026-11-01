@@ -26,7 +26,7 @@ import { isLatestInboundMessage, rememberAutomatedAnswer, takeAutomatedAnswer } 
 import { getPageUserName } from "@/lib/meta/client";
 import { lineNotifyEnabledFor, pushThrottledLineMessage } from "@/lib/notify/line";
 import { scheduleLineReminder } from "@/lib/notify/line-reminder";
-import { scheduleNudge } from "./nudge";
+import { isAdButton, parseNudgeConfig, scheduleNudge } from "./nudge";
 import { reportProblem, resolveProblem } from "@/lib/notify/owner-line";
 import { completeJson, type AiResult } from "./service";
 import { capByLines, formatAiText, MAX_LINE_WIDTH } from "./text";
@@ -457,8 +457,17 @@ export function applyReplyRules(
   const outbound = input.earlier.filter((m) => m.direction !== "IN");
   const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
   const outOfArea = ["沒服務", "開放"].map((name) => fixed.get(name));
+  // The same ad button pressed again (a second ad, or a second tap): the
+  // same canned answer is the right answer, not a loop. One person tapped
+  // 傳浴室照片給師傅看看 on two ads and the second tap woke the owner.
+  const nudge = parseNudgeConfig(input.settings.knowledgeBase);
+  const buttonAgain =
+    nudge !== null &&
+    isAdButton(nudge, input.question) &&
+    input.earlier.some((m) => m.direction === "IN" && sameWords(m.text, input.question));
   if (
     decision.kind === "answered" &&
+    !buttonAgain &&
     outbound.some((m) => m.direction === "OUT_AI" && sameWords(m.text, decision.text)) &&
     !outOfArea.includes(decision.text)
   ) {

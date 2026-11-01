@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, sanitizeAnswer, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -329,5 +329,35 @@ describe("isAcknowledgement", () => {
   });
   it("hears a question", () => {
     for (const t of ["好 那多少錢", "謝謝 那你們有到彰化嗎", "可以推薦別家嗎", "(客人傳了照片)"]) expect(isAcknowledgement(t), t).toBe(false);
+  });
+});
+
+describe("applyReplyRules: the same ad button twice", () => {
+  const kb = [
+    "[固定回覆:線上評估] 好的😊",
+    "[固定回覆:線上評估] 方便傳幾張浴室照片給師傅看看嗎",
+    "[固定回覆:線上報價] 都是請師傅免費到府丈量後現場報價唷",
+    "[廣告按鈕] 傳浴室照片給師傅看看",
+    "[追蹤訊息:1] 哈囉~ 剛剛的訊息有看到嗎",
+  ].join(String.fromCharCode(10));
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+  const canned = "好的😊" + String.fromCharCode(10) + "方便傳幾張浴室照片給師傅看看嗎";
+
+  it("answers the second tap with the same canned reply", () => {
+    const earlier = [
+      { direction: "IN", text: "傳浴室照片給師傅看看" },
+      { direction: "OUT_AI", text: canned },
+    ];
+    const out = applyReplyRules({ kind: "answered", text: canned }, { question: "傳浴室照片給師傅看看", earlier, settings });
+    expect(out).toEqual({ kind: "answered", text: canned });
+  });
+
+  it("still hands off a repeated answer to a typed question", () => {
+    const earlier = [
+      { direction: "IN", text: "無框的多少" },
+      { direction: "OUT_AI", text: "都是請師傅免費到府丈量後現場報價唷" },
+    ];
+    const out = applyReplyRules({ kind: "answered", text: "都是請師傅免費到府丈量後現場報價唷" }, { question: "無框的多少", earlier, settings });
+    expect(out).toEqual({ kind: "handoff", text: "轉給本人" });
   });
 });
