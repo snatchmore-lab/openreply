@@ -398,7 +398,7 @@ export type PreReplyRule = { kind: "result"; result: FaqAi } | { kind: "silent" 
 export function isAcknowledgement(text: string): boolean {
   const bare = text.replace(/[\s\p{P}\p{S}\p{Emoji_Presentation}\p{Extended_Pictographic}~～]/gu, "");
   if (!bare) return text.trim().length > 0;
-  return bare.length <= 6 && /^(好|好的|好喔|好哦|好啊|ok|okay|謝謝|謝謝你|謝謝您|感謝|了解|收到|嗯|嗯嗯|喔|哦|是|沒關係|沒事|知道了|辛苦了|哈|哈哈)+$/i.test(bare);
+  return bare.length <= 6 && /^(好|好的|好喔|好哦|好啊|好吧|好啦|好唷|ok|okay|謝謝|謝謝你|謝謝您|謝啦|感謝|了解|收到|嗯|嗯嗯|喔|哦|是|沒關係|沒事|知道了|辛苦了|哈|哈哈|掰掰|再見)+$/i.test(bare);
 }
 
 /** The webhook's stand-in for a photo, video, voice note, file or link. */

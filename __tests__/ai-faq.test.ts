@@ -329,7 +329,7 @@ describe("isRenovationPriceQuestion", () => {
 
 describe("isAcknowledgement", () => {
   it("hears a nod", () => {
-    for (const t of ["好", "好的~", "謝謝您😊", "ok", "👍", "🙏🙏", "了解", "收到 謝謝"]) expect(isAcknowledgement(t), t).toBe(true);
+    for (const t of ["好", "好的~", "謝謝您😊", "ok", "👍", "🙏🙏", "了解", "收到 謝謝", "好吧 謝謝", "好啦 掰掰"]) expect(isAcknowledgement(t), t).toBe(true);
   });
   it("hears a question", () => {
     for (const t of ["好 那多少錢", "謝謝 那你們有到彰化嗎", "可以推薦別家嗎", "(客人傳了照片)"]) expect(isAcknowledgement(t), t).toBe(false);
