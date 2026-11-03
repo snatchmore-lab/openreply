@@ -138,6 +138,7 @@ describe("台北 / 新北 follow-up", () => {
     expect(northFollowUp(kbNorth, [said("我在淡水"), said("(客人傳了照片)")])).toBeNull();
     expect(northFollowUp(kbNorth, [said("台北"), said("0912345678")])).toBeNull();
     expect(northFollowUp(kbNorth, [said("台中北屯")])).toBeNull();
+    expect(northFollowUp(kbNorth + "\n[北部地區] 大安區\n[服務地區] 台中", [said("台中市大安區")])).toBeNull();
     expect(northFollowUp("沒有設定", [said("台北")])).toBeNull();
   });
 });

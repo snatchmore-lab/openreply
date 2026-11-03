@@ -252,7 +252,12 @@ export function northFollowUp(knowledgeBase: string, messages: Array<{ direction
   const text = (taggedGroups(knowledgeBase, "固定回覆").get("北部追蹤") ?? []).join("\n").replace(/^\n+|\n+$/g, "");
   if (places.length === 0 || !text) return null;
   const inbound = messages.filter((m) => m.direction === "IN").map((m) => (m.text ?? "").replace(/臺/g, "台"));
-  if (!inbound.some((t) => places.some((p) => t.includes(p)))) return null;
+  // Same guard as isNorthThread in faq.ts: 台中市大安區 is not 台北.
+  const others = ["服務地區", "沒服務地區", "偏遠鄉鎮"]
+    .flatMap((tag) => [...taggedGroups(knowledgeBase, tag).values()].flat())
+    .flatMap((line) => line.split(/[\s、，,]+/))
+    .filter((p) => p && !places.some((n) => n.includes(p) || p.includes(n)));
+  if (!inbound.some((t) => places.some((p) => t.includes(p)) && !others.some((p) => t.includes(p)))) return null;
   if (inbound.some((t) => /^\(客人(傳了|分享了)/.test(t.trim()))) return null;
   const kbDigits = knowledgeBase.replace(/\D/g, "");
   const leftNumber = inbound.some((t) =>

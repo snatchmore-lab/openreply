@@ -455,7 +455,7 @@ describe("台北 / 新北 flow", () => {
     "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹",
     "[沒服務地區] 桃園 台南",
     "[服務地區] 台中 台北 新北",
-    "[北部地區] 台北 新北 板橋 淡水 信義區",
+    "[北部地區] 台北 新北 板橋 淡水 信義區 大安區 中正區",
     "[固定回覆:北部先傳照片] 台北、新北也有做唷~",
     "[固定回覆:北部先傳照片] 麻煩先傳幾張浴室照片",
     "[固定回覆:北部留電話] 收到照片了~",
@@ -469,6 +469,9 @@ describe("台北 / 新北 flow", () => {
     expect(isNorthThread(["我住淡水"], kb)).toBe(true);
     expect(isNorthThread(["臺北市松山"], kb)).toBe(true);
     expect(isNorthThread(["南投信義鄉"], kb)).toBe(false);
+    expect(isNorthThread(["台中市大安區，就在大安火車站附近"], kb)).toBe(false);
+    expect(isNorthThread(["基隆中正區"], kb + nl + "[沒服務地區] 基隆")).toBe(false);
+    expect(isNorthThread(["台北大安區"], kb)).toBe(true);
   });
 
   it("asks for photos when the place is named", () => {

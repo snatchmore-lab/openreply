@@ -503,7 +503,17 @@ const BOOKING_ITEMS_RESULT: FaqAi = {
 /** The person named a place listed under [北部地區] (台北, 新北 and their districts). */
 export function isNorthThread(texts: string[], knowledgeBase: string): boolean {
   const places = placeList(knowledgeBase, "北部地區");
-  return places.length > 0 && texts.some((t) => places.some((p) => t.replace(/臺/g, "台").includes(p)));
+  if (places.length === 0) return false;
+  // District names repeat across cities: 台中市大安區, 基隆中正區 (simulation
+  // sent the 台北 reply to 台中大安). A message that also names another
+  // listed city or town is about that place, not the north.
+  const others = ["服務地區", "沒服務地區", "偏遠鄉鎮"]
+    .flatMap((tag) => placeList(knowledgeBase, tag))
+    .filter((p) => !places.some((n) => n.includes(p) || p.includes(n)));
+  return texts.some((raw) => {
+    const t = raw.replace(/臺/g, "台");
+    return places.some((p) => t.includes(p)) && !others.some((p) => t.includes(p));
+  });
 }
 
 /** The thread is about booking a visit: the 預約 line went out, or the person asked for one. */
