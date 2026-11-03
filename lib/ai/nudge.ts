@@ -147,9 +147,10 @@ export async function handleNudge(job: FaqNudgeJob, now = new Date()): Promise<N
     : shouldFollowUpQuiet(conversation, job.messageId, fallback!, now, outOfAreaReplies(settings.knowledgeBase));
   if (!ok) return "skipped";
 
+  const north = kind === "quiet" ? northFollowUp(settings.knowledgeBase, conversation.messages) : null;
   const text = adConfig
     ? adConfig.texts[Math.floor(Math.random() * adConfig.texts.length)]
-    : await writeQuietFollowUp({
+    : north ?? await writeQuietFollowUp({
         workspaceId: account.workspaceId,
         conversationId: conversation.id,
         knowledgeBase: settings.knowledgeBase,
@@ -238,6 +239,30 @@ export function safeTopic(raw: string, transcript: string): string | null {
 }
 
 /** The owner's "we don't serve your area" fixed replies: no follow-up after those. */
+/**
+ * 台北 / 新北 threads where the person sent no photo and left no number:
+ * the follow-up asks for a phone number instead ([固定回覆:北部追蹤]).
+ * Kept here, not in faq.ts, because faq.ts imports this module.
+ */
+export function northFollowUp(knowledgeBase: string, messages: Array<{ direction: string; text: string | null }>): string | null {
+  const places = [...taggedGroups(knowledgeBase, "北部地區").values()]
+    .flat()
+    .flatMap((line) => line.split(/[\s、，,]+/))
+    .filter(Boolean);
+  const text = (taggedGroups(knowledgeBase, "固定回覆").get("北部追蹤") ?? []).join("\n").replace(/^\n+|\n+$/g, "");
+  if (places.length === 0 || !text) return null;
+  const inbound = messages.filter((m) => m.direction === "IN").map((m) => (m.text ?? "").replace(/臺/g, "台"));
+  if (!inbound.some((t) => places.some((p) => t.includes(p)))) return null;
+  if (inbound.some((t) => /^\(客人(傳了|分享了)/.test(t.trim()))) return null;
+  const kbDigits = knowledgeBase.replace(/\D/g, "");
+  const leftNumber = inbound.some((t) =>
+    [...t.matchAll(/\(?0\d[\d\-\s()]{6,12}\d/g)]
+      .map((m) => m[0].replace(/\D/g, ""))
+      .some((d) => d.length >= 9 && d.length <= 10 && !kbDigits.includes(d))
+  );
+  return leftNumber ? null : text;
+}
+
 function outOfAreaReplies(knowledgeBase: string): string[] {
   const fixed = taggedGroups(knowledgeBase, "固定回覆");
   return ["沒服務", "開放"]

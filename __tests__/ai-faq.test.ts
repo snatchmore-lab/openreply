@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isRenovationPriceQuestion, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isNorthThread, isRenovationPriceQuestion, leftPhoneNumber, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -446,5 +446,138 @@ describe("applyReplyRules: callback and after 沒服務", () => {
       { direction: "OUT_AI", text: "哇…目前還沒有服務到那邊🥹" },
     ];
     expect(applyReplyRules({ kind: "handoff", text: "轉給本人" }, { question: "那我台中的房子呢 可以約嗎", earlier, settings })).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+});
+
+describe("台北 / 新北 flow", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹",
+    "[沒服務地區] 桃園 台南",
+    "[服務地區] 台中 台北 新北",
+    "[北部地區] 台北 新北 板橋 淡水 信義區",
+    "[固定回覆:北部先傳照片] 台北、新北也有做唷~",
+    "[固定回覆:北部先傳照片] 麻煩先傳幾張浴室照片",
+    "[固定回覆:北部留電話] 收到照片了~",
+    "[固定回覆:北部留電話] 麻煩留一下您的電話",
+    "[固定回覆:回覆時間] 或打 0988-084170 給師傅😊",
+  ].join(nl);
+  const askPhotos = "台北、新北也有做唷~" + nl + "麻煩先傳幾張浴室照片";
+  const askPhone = "收到照片了~" + nl + "麻煩留一下您的電話";
+
+  it("knows the place, and that 南投信義鄉 is not 台北", () => {
+    expect(isNorthThread(["我住淡水"], kb)).toBe(true);
+    expect(isNorthThread(["臺北市松山"], kb)).toBe(true);
+    expect(isNorthThread(["南投信義鄉"], kb)).toBe(false);
+  });
+
+  it("asks for photos when the place is named", () => {
+    const out = preReplyRule("我在新北板橋", kb, [{ direction: "IN", text: "我有浴室整修需求" }], false);
+    expect(out).toMatchObject({ kind: "result", result: { model: "rule:north-photos", result: { fixedReply: "北部先傳照片" } } });
+  });
+
+  it("leaves a question in the same message to the model", () => {
+    expect(preReplyRule("台北 無框拉門大概多少", kb, [], false)).toBeNull();
+  });
+
+  it("asks for a phone number after a photo, once", () => {
+    const earlier = [
+      { direction: "IN", text: "台北" },
+      { direction: "OUT_AI", text: askPhotos },
+    ];
+    expect(preReplyRule("(客人傳了照片)", kb, earlier, false)).toMatchObject({ kind: "result", result: { model: "rule:north-phone" } });
+    const later = [...earlier, { direction: "IN", text: "(客人傳了照片)" }, { direction: "OUT_AI", text: askPhone }];
+    expect(preReplyRule("(客人傳了照片)", kb, later, false)).toBeNull();
+  });
+
+  it("does not touch photos from elsewhere", () => {
+    expect(preReplyRule("(客人傳了照片)", kb, [{ direction: "IN", text: "台中北屯" }], false)).toBeNull();
+  });
+
+  it("is no longer 沒服務", () => {
+    expect(preReplyRule("台北四間浴室 可以施作嗎", kb, [], false)?.kind).not.toBe("silent");
+    expect(preReplyRule("台北四間浴室 可以施作嗎", kb, [], false)).not.toMatchObject({ result: { result: { fixedReply: "沒服務" } } });
+  });
+
+  it("hands a number left to the owner", () => {
+    const out = applyReplyRules({ kind: "answered", text: "好的~" }, { question: "02-2345-6789 王小姐", earlier: [{ direction: "IN", text: "台北" }], settings: { handoffMessage: "轉給本人", knowledgeBase: kb } });
+    expect(out).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+});
+
+describe("leftPhoneNumber", () => {
+  const kb = "[固定回覆:回覆時間] 或打 0988-084170 給師傅😊";
+  it("finds mobiles and landlines", () => {
+    for (const t of ["0912345678", "0912-345-678", "02-2345-6789", "(02)23456789", "電話 04 2234 5678"]) expect(leftPhoneNumber(t, kb), t).toBe(true);
+  });
+  it("ignores the owner's number, sizes and prices", () => {
+    for (const t of ["我直接打0988-084170可以嗎", "寬度 190 高 200", "預算 30000", "12/25 可以嗎"]) expect(leftPhoneNumber(t, kb), t).toBe(false);
+  });
+});
+
+describe("renovation price: area first, then photos", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修報價] 整修的部分要看現場範圍",
+    "[固定回覆:整修報價] 請問是在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修報價-已知地區] 整修的部分要看現場範圍",
+    "[固定回覆:整修報價-已知地區] 方便先傳幾張浴室照片給師傅看看嗎😊",
+    "[固定回覆:整修請傳照片] 好的~",
+    "[固定回覆:整修請傳照片] 方便先傳幾張浴室照片",
+    "[服務地區] 台中 彰化",
+  ].join(nl);
+  const askArea = "整修的部分要看現場範圍" + nl + "請問是在哪個縣市/哪一區呢😊";
+  const askPhotosKnown = "整修的部分要看現場範圍" + nl + "方便先傳幾張浴室照片給師傅看看嗎😊";
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+
+  it("asks the area when the model jumped to photos", () => {
+    const earlier = [{ direction: "IN", text: "我有浴室整修需求" }, { direction: "OUT_AI", text: "好的~" }];
+    expect(applyReplyRules({ kind: "answered", text: askPhotosKnown }, { question: "整間翻新加防水大概多少錢?", earlier, settings })).toEqual({ kind: "answered", text: askArea });
+  });
+
+  it("keeps the photo version once the area is known", () => {
+    const earlier = [{ direction: "IN", text: "我在台中" }];
+    expect(applyReplyRules({ kind: "answered", text: askArea }, { question: "整間翻新多少", earlier, settings })).toEqual({ kind: "answered", text: askPhotosKnown });
+  });
+
+  it("asks for photos when the area comes back", () => {
+    const earlier = [{ direction: "IN", text: "整間翻新加防水大概多少錢?" }, { direction: "OUT_AI", text: askArea }];
+    expect(preReplyRule("彰化員林", kb, earlier, false)).toMatchObject({ kind: "result", result: { model: "rule:reno-photos", result: { fixedReply: "整修請傳照片" } } });
+    expect(preReplyRule("彰化員林 那大概要多久", kb, earlier, false)).toBeNull();
+  });
+});
+
+describe("renovation button: items, then area, then photos", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修問項目] 好的~",
+    "[固定回覆:整修問項目] 請問想做哪些項目呢?",
+    "[固定回覆:整修問地區] 好的~",
+    "[固定回覆:整修問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修請傳照片] 好的~",
+    "[固定回覆:整修請傳照片] 方便先傳幾張浴室照片",
+    "[服務地區] 台中 彰化",
+  ].join(nl);
+  const askItems = "好的~" + nl + "請問想做哪些項目呢?";
+  const askArea = "好的~" + nl + "請問是住在哪個縣市/哪一區呢😊";
+  const thread = [{ direction: "IN", text: "我有浴室整修需求" }, { direction: "OUT_AI", text: askItems }];
+
+  it("asks the area after any answer, even 對", () => {
+    for (const t of ["對", "想拆浴缸改乾濕分離", "整間翻新"]) {
+      expect(preReplyRule(t, kb, thread, false), t).toMatchObject({ kind: "result", result: { model: "rule:reno-area" } });
+    }
+  });
+
+  it("goes straight to photos when the place came with it", () => {
+    expect(preReplyRule("整間翻新 台中北屯", kb, thread, false)).toMatchObject({ result: { model: "rule:reno-photos" } });
+  });
+
+  it("asks for photos once the area is answered", () => {
+    const later = [...thread, { direction: "IN", text: "對" }, { direction: "OUT_AI", text: askArea }];
+    expect(preReplyRule("彰化員林", kb, later, false)).toMatchObject({ result: { model: "rule:reno-photos" } });
+  });
+
+  it("leaves questions to the model", () => {
+    expect(preReplyRule("整間翻新大概多少錢?", kb, thread, false)).toBeNull();
   });
 });

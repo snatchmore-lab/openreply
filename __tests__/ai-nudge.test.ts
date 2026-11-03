@@ -10,7 +10,7 @@ vi.mock("@/lib/instagram/provider", () => ({
 vi.mock("@/lib/utils/rate-limiter", () => ({ reserveDMSlot: vi.fn(), releaseDMSlot: vi.fn() }));
 vi.mock("@/lib/ai/service", () => ({ completeJson: vi.fn() }));
 
-import { parseNudgeConfig, shouldNudge } from "@/lib/ai/nudge";
+import { northFollowUp, parseNudgeConfig, shouldNudge } from "@/lib/ai/nudge";
 
 const kb = [
   "其他內容",
@@ -120,5 +120,24 @@ describe("quiet follow-up template", () => {
     expect(safeTopic("白框三橫拉，彰化市的那間浴室要做", "")).toBeNull();
     expect(safeTopic("7999的拉門", "客人：拉門")).toBeNull();
     expect(safeTopic("8500的款式", "回覆：價格在8500左右")).toBe("8500的款式");
+  });
+});
+
+describe("台北 / 新北 follow-up", () => {
+  const kbNorth = [
+    "[北部地區] 台北 新北 淡水",
+    "[固定回覆:北部追蹤] 哈囉~ 不方便拍照的話",
+    "[固定回覆:北部追蹤] 也可以直接留電話",
+    "[固定回覆:回覆時間] 或打 0988-084170 給師傅😊",
+  ].join("\n");
+  const said = (text: string) => ({ direction: "IN", text });
+  it("asks for a number when no photo came", () => {
+    expect(northFollowUp(kbNorth, [said("我在淡水"), { direction: "OUT_AI", text: "麻煩先傳照片" }])).toBe("哈囉~ 不方便拍照的話\n也可以直接留電話");
+  });
+  it("stays out of the way after a photo or a number, or outside the north", () => {
+    expect(northFollowUp(kbNorth, [said("我在淡水"), said("(客人傳了照片)")])).toBeNull();
+    expect(northFollowUp(kbNorth, [said("台北"), said("0912345678")])).toBeNull();
+    expect(northFollowUp(kbNorth, [said("台中北屯")])).toBeNull();
+    expect(northFollowUp("沒有設定", [said("台北")])).toBeNull();
   });
 });

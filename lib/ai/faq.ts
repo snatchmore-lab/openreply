@@ -436,6 +436,52 @@ export function preReplyRule(
     return saidAlready ? { kind: "silent" } : { kind: "result", result: fixedReplyResult("回覆時間", "rule:reply-time") };
   }
   if (isRemoteTownRequest(question, knowledgeBase)) return { kind: "result", result: REMOTE_TOWN_RESULT };
+  // 台北 / 新北: photos first, then a phone number, then the owner calls.
+  // A photo gets "please leave your number" (once) instead of a handoff;
+  // naming the place gets "please send photos" (once) when nothing else
+  // was asked. A number left goes to the owner (applyReplyRules).
+  const fixedAll = knowledgeBaseFixedReplies(knowledgeBase);
+  const inboundAll = [...earlier.filter((m) => m.direction === "IN").map((m) => m.text), question];
+  if (isNorthThread(inboundAll, knowledgeBase)) {
+    const said = (text: string) => earlier.some((m) => m.direction !== "IN" && sameWords(m.text, text));
+    const askPhone = fixedAll.get("北部留電話");
+    if (askPhone && isMediaPlaceholder(question) && !said(askPhone)) {
+      return { kind: "result", result: fixedReplyResult("北部留電話", "rule:north-phone") };
+    }
+    const askPhotos = fixedAll.get("北部先傳照片");
+    const photoSent = inboundAll.some((t) => isMediaPlaceholder(t));
+    if (
+      askPhotos &&
+      !photoSent &&
+      !said(askPhotos) &&
+      isNorthThread([question], knowledgeBase) &&
+      !asksSomething(question) &&
+      !wantsCallback(question, knowledgeBase)
+    ) {
+      return { kind: "result", result: fixedReplyResult("北部先傳照片", "rule:north-photos") };
+    }
+  }
+
+  // Renovation price: area asked ([固定回覆:整修報價]); the area named and
+  // nothing else asked → ask for photos ([固定回覆:整修請傳照片]). Photos
+  // then go to the owner as any photo does.
+  // The renovation button flow: [固定回覆:整修問項目] → whatever the reply
+  // ("對" included, seen live) → [固定回覆:整修問地區] → photos. A reply
+  // that already names the place skips straight to photos.
+  const askedArea = ["整修報價", "整修問地區"].map((name) => fixedAll.get(name)).filter((t): t is string => Boolean(t));
+  const askedItems = fixedAll.get("整修問項目");
+  const lastAi = lastOut?.direction === "OUT_AI" ? lastOut.text : null;
+  if (lastAi && !asksSomething(question) && !isMediaPlaceholder(question) && fixedAll.get("整修請傳照片")) {
+    const afterArea = askedArea.some((t) => sameWords(lastAi, t));
+    const afterItems = askedItems ? sameWords(lastAi, askedItems) : false;
+    if ((afterArea || afterItems) && mentionsPlace(question, knowledgeBase)) {
+      return { kind: "result", result: fixedReplyResult("整修請傳照片", "rule:reno-photos") };
+    }
+    if (afterItems && fixedAll.get("整修問地區")) {
+      return { kind: "result", result: fixedReplyResult("整修問地區", "rule:reno-area") };
+    }
+  }
+
   // Booking flow: area asked, then "which work" ([固定回覆:預約問項目]).
   // The person names the work and asks nothing else: that is the owner's
   // cue to arrange a time. The model kept going (fixtures, photos) instead.
@@ -453,6 +499,12 @@ const BOOKING_ITEMS_RESULT: FaqAi = {
   model: "rule:booking-items",
   usage: null,
 };
+
+/** The person named a place listed under [北部地區] (台北, 新北 and their districts). */
+export function isNorthThread(texts: string[], knowledgeBase: string): boolean {
+  const places = placeList(knowledgeBase, "北部地區");
+  return places.length > 0 && texts.some((t) => places.some((p) => t.replace(/臺/g, "台").includes(p)));
+}
 
 /** The thread is about booking a visit: the 預約 line went out, or the person asked for one. */
 function isBookingThread(earlier: { direction: string; text: string }[], knowledgeBase: string): boolean {
@@ -547,6 +599,16 @@ export function applyReplyRules(
   // area). Once; the person who still insists on a number gets the owner.
   const renovation = fixed.get("整修報價");
   const renovationKnown = fixed.get("整修報價-已知地區");
+  // The model sometimes picks the "area known" version (photo request) for
+  // someone who never said where they are (seen live: 整間翻新加防水大概多少錢).
+  // Area first, photos after; swap to the version that fits.
+  if (decision.kind === "answered" && renovation && renovationKnown) {
+    const areaKnown = inbound.some((t) => mentionsPlace(t, input.settings.knowledgeBase));
+    const [from, to] = areaKnown ? [renovation, renovationKnown] : [renovationKnown, renovation];
+    if (decision.text === from || decision.text.startsWith(from + "\n")) {
+      return { kind: "answered", text: to + decision.text.slice(from.length) };
+    }
+  }
   if (decision.kind === "handoff" && renovation && isRenovationPriceQuestion(input.question, inbound)) {
     const said = outbound.some((m) => sameWords(m.text, renovation) || (renovationKnown ? sameWords(m.text, renovationKnown) : false));
     if (!said) {
@@ -584,9 +646,18 @@ export function applyReplyRules(
 export function wantsCallback(text: string, knowledgeBase = ""): boolean {
   const t = text.replace(/\s/g, "");
   if (/打給我|打電話給我|打來|回電|回撥|來電給|(聯絡|聯繫|連絡)我|電話給(你|妳|您)|留(個|一下)?(電話|手機|號碼)|我的?(電話|手機)(是|：|:|號碼)?0?9|call我/i.test(t)) return true;
-  // A number in the message is the person's own unless the knowledge base lists it (the owner's).
-  const kbDigits = knowledgeBase.replace(/[-\s]/g, "");
-  return [...t.matchAll(/09\d{2}-?\d{3}-?\d{3}/g)].some((m) => !kbDigits.includes(m[0].replace(/-/g, "")));
+  return leftPhoneNumber(text, knowledgeBase);
+}
+
+/**
+ * A mobile (09…) or landline (02-…, (04)…) number in the message that is not
+ * one the knowledge base lists (the owner's own).
+ */
+export function leftPhoneNumber(text: string, knowledgeBase = ""): boolean {
+  const kbDigits = knowledgeBase.replace(/\D/g, "");
+  return [...text.matchAll(/\(?0\d[\d\-\s()]{6,12}\d/g)]
+    .map((m) => m[0].replace(/\D/g, ""))
+    .some((d) => d.length >= 9 && d.length <= 10 && !kbDigits.includes(d));
 }
 
 function mentionsServedPlace(text: string, knowledgeBase: string): boolean {
