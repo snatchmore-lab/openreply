@@ -1000,6 +1000,18 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       }
 
       delivered = true;
+      // The reveal went out as a private reply with no button step, so there
+      // may be no open messaging window for a second message. Try the image
+      // anyway; a rejection is logged by sendRevealImage and the reveal stays
+      // SENT. Campaigns that need the image reliably use an opening DM.
+      if (!useOpeningDm && !sendFollowPrompt) {
+        await sendRevealImage({
+          accessToken,
+          automation,
+          userId: commenterId,
+          context: "comment private reply",
+        });
+      }
       await prisma.dmLog.update({
         where: {
           automationId_commentId: {

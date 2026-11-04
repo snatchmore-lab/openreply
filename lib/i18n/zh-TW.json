@@ -541,5 +541,5 @@
   "Facebook connection failed": "Facebook 連接失敗",
   "Facebook connection did not complete. Please try again.": "Facebook 連接沒有完成，請再試一次。",
   "Attach an image (optional)": "附上一張圖片（選填）",
-  "A public image URL sent as its own message right after the DM above. Instagram only accepts it after the person tapped a button or messaged you, so turn on the follow request or the opening DM.": "填公開的圖片網址，會在上面那則私訊之後另外送出一則圖片。Instagram 只允許在對方按過按鈕或私訊過你之後送圖，所以請開啟「先要求追蹤」或「開場私訊」"
+  "A public image URL sent as its own message right after the DM above. Instagram only accepts it once the person has tapped a button or messaged you, so turn on the opening DM: the follow request alone is skipped for people who already follow.": "填公開的圖片網址，會在上面那則私訊之後另外送出一則圖片。Instagram 只允許在對方按過按鈕或私訊過你之後送圖，所以請開啟「開場私訊」：只開「先要求追蹤」的話，已追蹤的人會直接收到文字、拿不到圖"
 }

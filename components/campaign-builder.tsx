@@ -1102,7 +1102,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               />
               <p className="text-xs text-muted">
                 {t(
-                  "A public image URL sent as its own message right after the DM above. Instagram only accepts it after the person tapped a button or messaged you, so turn on the follow request or the opening DM."
+                  "A public image URL sent as its own message right after the DM above. Instagram only accepts it once the person has tapped a button or messaged you, so turn on the opening DM: the follow request alone is skipped for people who already follow."
                 )}
               </p>
             </div>
