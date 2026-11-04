@@ -41,6 +41,7 @@ const createAutomationSchema = z
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
     linkButtonLabel: z.string().max(20).optional().nullable(),
+    dmImageUrl: z.union([z.string().url().max(2000), z.literal("")]).optional().nullable(),
     requireFollow: z.boolean().optional().default(false),
     followPromptMessage: z.string().max(1000).optional().nullable(),
     followPromptButtonLabel: z.string().max(20).optional().nullable(),
@@ -113,6 +114,7 @@ const updateAutomationSchema = z.object({
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
   linkButtonLabel: z.string().max(20).optional().nullable(),
+  dmImageUrl: z.union([z.string().url().max(2000), z.literal("")]).optional().nullable(),
   requireFollow: z.boolean().optional(),
   followPromptMessage: z.string().max(1000).optional().nullable(),
   followPromptButtonLabel: z.string().max(20).optional().nullable(),
@@ -411,6 +413,7 @@ export async function POST(request: NextRequest) {
         ? parsed.data.openingDmButtonLabel || null
         : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
+      dmImageUrl: parsed.data.dmImageUrl?.trim() || null,
       requireFollow: parsed.data.requireFollow,
       followPromptMessage: parsed.data.requireFollow
         ? parsed.data.followPromptMessage || null
@@ -535,6 +538,9 @@ export async function PATCH(request: NextRequest) {
     automationData.followPromptButtonLabel = null;
     automationData.followCheckingMessage = null;
     automationData.followNotYetMessage = null;
+  }
+  if (automationData.dmImageUrl !== undefined) {
+    automationData.dmImageUrl = automationData.dmImageUrl?.trim() || null;
   }
   if (automationData.followCheckingMessage !== undefined) {
     automationData.followCheckingMessage = automationData.followCheckingMessage?.trim() || null;

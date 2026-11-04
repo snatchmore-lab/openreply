@@ -29,6 +29,7 @@ interface Campaign {
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
   linkButtonLabel: string | null;
+  dmImageUrl?: string | null;
   requireFollow: boolean;
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
@@ -253,6 +254,13 @@ export default function CampaignDetailPage() {
           <FieldBox>{campaign.dmMessage}</FieldBox>
           {hasLink && (
             <FieldBox>{campaign.linkButtonLabel || "Open link"}</FieldBox>
+          )}
+          {campaign.dmImageUrl && (
+            <FieldBox>
+              <a href={campaign.dmImageUrl} target="_blank" rel="noreferrer" className="underline break-all">
+                {campaign.dmImageUrl}
+              </a>
+            </FieldBox>
           )}
           {hasSecondLink && (
             <FieldBox>

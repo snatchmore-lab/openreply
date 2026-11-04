@@ -539,5 +539,7 @@
   "No Facebook Page was granted. Start again and tick your Page on the Facebook screen.": "沒有授權任何粉絲專頁。請重新連接，並在 Facebook 的畫面中勾選你的粉絲專頁。",
   "Facebook connection cancelled.": "已取消 Facebook 連接。",
   "Facebook connection failed": "Facebook 連接失敗",
-  "Facebook connection did not complete. Please try again.": "Facebook 連接沒有完成，請再試一次。"
+  "Facebook connection did not complete. Please try again.": "Facebook 連接沒有完成，請再試一次。",
+  "Attach an image (optional)": "附上一張圖片（選填）",
+  "A public image URL sent as its own message right after the DM above. Instagram only accepts it after the person tapped a button or messaged you, so turn on the follow request or the opening DM.": "填公開的圖片網址，會在上面那則私訊之後另外送出一則圖片。Instagram 只允許在對方按過按鈕或私訊過你之後送圖，所以請開啟「先要求追蹤」或「開場私訊」"
 }

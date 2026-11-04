@@ -194,6 +194,9 @@ model Automation {
   openingDmMessage     String?
   openingDmButtonLabel String?
   linkButtonLabel      String?
+  /// Public URL of one image sent right after the reveal DM (needs an open
+  /// messaging window, i.e. a button tap or a DM trigger). Null = no image.
+  dmImageUrl           String?
   requireFollow           Boolean @default(false)
   followPromptMessage     String?
   followPromptButtonLabel String?

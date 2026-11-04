@@ -245,18 +245,25 @@ export async function sendDirectMessage({
   );
 }
 
-/** One image DM. Only Facebook Pages support it for now. */
+/** One image DM (public URL). Facebook Pages and direct Instagram accounts; not Zernio. */
 export async function sendDirectImage({
   context,
+  instagramAccountId,
   userId,
   imageUrl,
 }: {
   context: InstagramContext;
+  instagramAccountId?: string;
   userId: string;
   imageUrl: string;
 }) {
-  if (context.provider !== "FACEBOOK_PAGE") throw new Error("Image DMs are only supported on Facebook Pages");
-  return trackSent(meta.sendPageImage(context.accessToken, context.pageId, userId, imageUrl));
+  if (context.provider === "FACEBOOK_PAGE")
+    return trackSent(meta.sendPageImage(context.accessToken, context.pageId, userId, imageUrl));
+  if (context.provider === "META") {
+    if (!instagramAccountId) throw new Error("instagramAccountId is required for Instagram image DMs");
+    return trackSent(meta.sendInstagramImage(context.accessToken, instagramAccountId, userId, imageUrl));
+  }
+  throw new Error("Image DMs are not supported on this provider");
 }
 
 export async function sendDirectMessageWithLinkButton({

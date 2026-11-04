@@ -44,6 +44,7 @@ interface LoadedCampaign {
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
   linkButtonLabel: string | null;
+  dmImageUrl?: string | null;
   requireFollow: boolean;
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
@@ -260,6 +261,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [linkOpen, setLinkOpen] = useState(false);
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
   const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
+  const [dmImageUrl, setDmImageUrl] = useState("");
   const [secondLinkOpen, setSecondLinkOpen] = useState(false);
   const [secondaryDestinationUrl, setSecondaryDestinationUrl] = useState("");
   const [secondaryButtonLabel, setSecondaryButtonLabel] = useState("Open link");
@@ -379,6 +381,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
+        setDmImageUrl(c.dmImageUrl ?? "");
         setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
         setTrackedDestinationUrl(link);
@@ -533,6 +536,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         : [],
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
       linkButtonLabel: linkButtonLabel.trim() || "Open link",
+      dmImageUrl: dmImageUrl.trim() || "",
       secondaryDestinationUrl: secondaryDestinationUrl.trim() || "",
       secondaryButtonLabel: secondaryButtonLabel.trim() || "Open link",
       requireFollow,
@@ -1087,6 +1091,21 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               placeholder={t("Write a message")}
               maxLength={1000}
             />
+            <div className="space-y-1 rounded-lg border border-border px-3 py-2.5">
+              <span className="text-sm text-foreground">{t("Attach an image (optional)")}</span>
+              <input
+                value={dmImageUrl}
+                onChange={(e) => setDmImageUrl(e.target.value)}
+                placeholder="https://yoursite.com/card.png"
+                maxLength={2000}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+              />
+              <p className="text-xs text-muted">
+                {t(
+                  "A public image URL sent as its own message right after the DM above. Instagram only accepts it after the person tapped a button or messaged you, so turn on the follow request or the opening DM."
+                )}
+              </p>
+            </div>
             <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-foreground">{t("AI-written opener")}</span>

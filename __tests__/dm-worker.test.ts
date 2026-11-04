@@ -8,6 +8,7 @@ const {
   mockGetUserFollowStatus,
   mockSendDirectMessageWithButton,
   mockSendDirectMessage,
+  mockSendInstagramImage,
   mockSendDirectMessageWithLinkButton,
   mockDecryptToken,
   mockMatchKeywords,
@@ -45,6 +46,7 @@ const {
   mockGetUserFollowStatus: vi.fn(),
   mockSendDirectMessageWithButton: vi.fn(),
   mockSendDirectMessage: vi.fn(),
+  mockSendInstagramImage: vi.fn(),
   mockSendDirectMessageWithLinkButton: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
@@ -67,6 +69,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendDirectMessageWithButton: mockSendDirectMessageWithButton,
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
+  sendInstagramImage: mockSendInstagramImage,
   sendCommentReply: vi.fn(),
   MetaApiError: class MetaApiError extends Error {
     code: number;
@@ -743,6 +746,51 @@ describe("DM Worker — Full Pipeline", () => {
       "ig_456",
       "commenter_999",
       "Hey commenter_user! Here is the link: https://example.com"
+    );
+  });
+
+  it("sends the campaign image as its own message after the reveal text", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...mockAutomation,
+      trackedLinks: [],
+      dmImageUrl: "https://example.com/cards/1.png",
+    });
+    mockSendInstagramImage.mockResolvedValue({ recipient_id: "commenter_999", message_id: "img_1" });
+
+    const processor = getProcessor();
+    await processor(createMockPostbackJob());
+
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendInstagramImage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "https://example.com/cards/1.png"
+    );
+    expect(mockSendInstagramImage.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockSendDirectMessage.mock.invocationCallOrder[0]
+    );
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ status: "SENT" }) })
+    );
+  });
+
+  it("keeps the reveal as SENT when the image is rejected", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...mockAutomation,
+      trackedLinks: [],
+      dmImageUrl: "https://example.com/cards/1.png",
+    });
+    mockSendInstagramImage.mockRejectedValue(new Error("bad image"));
+
+    const processor = getProcessor();
+    await processor(createMockPostbackJob());
+
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ status: "SENT" }) })
     );
   });
 

@@ -30,6 +30,7 @@ import {
   TokenExpiredError,
   getUserFollowStatus,
   sendCommentReply,
+  sendDirectImage,
   sendDirectMessage,
   sendDirectMessageWithButton,
   sendDirectMessageWithLinkButton,
@@ -200,6 +201,7 @@ function buildInlineLinkFallback(
 type RevealAutomation = {
   dmMessage: string;
   linkButtonLabel: string | null;
+  dmImageUrl?: string | null;
   trackedLinks: WorkerTrackedLink[];
   instagramAccount: { instagramId: string };
 };
@@ -209,7 +211,52 @@ type RevealAutomation = {
  * button-tap (postback) path and the DM keyword-trigger path — both already
  * have an open conversation with the user, so neither uses a private reply.
  */
-async function sendRevealDirectMessage({
+async function sendRevealDirectMessage(args: {
+  accessToken: InstagramContext;
+  automation: RevealAutomation;
+  userId: string;
+  commenterName: string | null;
+  context: string;
+  aiOpening?: string | null;
+}): Promise<void> {
+  await sendRevealText(args);
+  await sendRevealImage(args);
+}
+
+/**
+ * The optional image follows the reveal text. The text already went out, so a
+ * failed image is logged and dropped rather than failing the job, which would
+ * resend the text on retry.
+ */
+async function sendRevealImage({
+  accessToken,
+  automation,
+  userId,
+  context,
+}: {
+  accessToken: InstagramContext;
+  automation: RevealAutomation;
+  userId: string;
+  context: string;
+}): Promise<void> {
+  const imageUrl = automation.dmImageUrl?.trim();
+  if (!imageUrl) return;
+  try {
+    await sendDirectImage({
+      context: accessToken,
+      instagramAccountId: automation.instagramAccount.instagramId,
+      userId,
+      imageUrl,
+    });
+  } catch (error) {
+    console.error(
+      `[DM Worker] Failed to send reveal image in ${context}:`,
+      formatError(error)
+    );
+  }
+}
+
+async function sendRevealText({
   accessToken,
   automation,
   userId,

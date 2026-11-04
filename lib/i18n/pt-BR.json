@@ -539,5 +539,7 @@
   "No Facebook Page was granted. Start again and tick your Page on the Facebook screen.": "Nenhuma Página foi autorizada. Comece de novo e marque sua Página na tela do Facebook.",
   "Facebook connection cancelled.": "Conexão com o Facebook cancelada.",
   "Facebook connection failed": "Falha na conexão com o Facebook",
-  "Facebook connection did not complete. Please try again.": "A conexão com o Facebook não foi concluída. Tente novamente."
+  "Facebook connection did not complete. Please try again.": "A conexão com o Facebook não foi concluída. Tente novamente.",
+  "Attach an image (optional)": "Anexar uma imagem (opcional)",
+  "A public image URL sent as its own message right after the DM above. Instagram only accepts it after the person tapped a button or messaged you, so turn on the follow request or the opening DM.": "URL pública de uma imagem enviada como mensagem separada logo após a DM acima. O Instagram só aceita depois que a pessoa tocou em um botão ou enviou mensagem, então ative o pedido de seguir ou a DM de abertura."
 }
