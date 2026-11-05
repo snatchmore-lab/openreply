@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isNorthThread, isRenovationPriceQuestion, leftPhoneNumber, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isNorthThread, isRenovationPriceQuestion, leftPhoneNumber, placeLabel, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -582,5 +582,49 @@ describe("renovation button: items, then area, then photos", () => {
 
   it("leaves questions to the model", () => {
     expect(preReplyRule("整間翻新大概多少錢?", kb, thread, false)).toBeNull();
+  });
+});
+
+describe("photo request names the place; a bare 整間 asks the area", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修問地區] 好的~",
+    "[固定回覆:整修問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修請傳照片] {地區}可以～",
+    "[固定回覆:整修請傳照片]",
+    "[固定回覆:整修請傳照片] 可以先傳幾張現場照片",
+    "[固定回覆:整修請傳照片] 幫你做初步評估😊",
+    "[固定回覆:整修請傳照片]",
+    "[固定回覆:整修請傳照片] 或是要直接請師傅到現場討論呢",
+    "[服務地區] 台中 彰化 嘉義",
+    "[沒服務地區] 台南",
+  ].join(nl);
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+  const photo = (place: string) => [place + "可以～", "", "可以先傳幾張現場照片", "幫你做初步評估😊", "", "或是要直接請師傅到現場討論呢"].join(nl);
+
+  it("writes the place back the way the owner does", () => {
+    expect(placeLabel(["嘉義市" + nl + "西區"], kb)).toBe("嘉義西區");
+    expect(placeLabel(["台中市北屯區"], kb)).toBe("台中北屯區");
+    expect(placeLabel(["我住彰化員林"], kb)).toBe("彰化員林");
+    expect(placeLabel(["整間翻新 台中北屯"], kb)).toBe("台中北屯");
+    expect(placeLabel(["西區"], kb)).toBeNull();
+    expect(placeLabel(["金門縣"], kb)).toBeNull();
+  });
+
+  it("fills the reply, or says 好的~ when the place is unclear", () => {
+    const earlier = [{ direction: "IN", text: "嘉義市" }];
+    const filled = applyReplyRules({ kind: "answered", text: photo("{地區}") }, { question: "嘉義市" + nl + "西區", earlier, settings });
+    expect(filled).toEqual({ kind: "answered", text: photo("嘉義西區") });
+    const unclear = applyReplyRules({ kind: "answered", text: photo("{地區}") }, { question: "西區", earlier: [], settings });
+    expect(unclear).toEqual({ kind: "answered", text: ["好的~", "", "可以先傳幾張現場照片", "幫你做初步評估😊", "", "或是要直接請師傅到現場討論呢"].join(nl) });
+  });
+
+  it("asks the area when the first message is just 整間", () => {
+    for (const t of ["整間", "整間整修", "整修", "整間翻新～"]) {
+      expect(preReplyRule(t, kb, [], false), t).toMatchObject({ kind: "result", result: { model: "rule:reno-start", result: { fixedReply: "整修問地區" } } });
+    }
+    expect(preReplyRule("整間大概多少", kb, [], false)).toBeNull();
+    expect(preReplyRule("淋浴拉門", kb, [], false)).toBeNull();
+    expect(preReplyRule("整間", kb, [{ direction: "OUT_AI", text: "好的~" }], false)).toBeNull();
   });
 });

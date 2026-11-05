@@ -471,6 +471,12 @@ export function preReplyRule(
   const askedArea = ["整修報價", "整修問地區"].map((name) => fixedAll.get(name)).filter((t): t is string => Boolean(t));
   const askedItems = fixedAll.get("整修問項目");
   const lastAi = lastOut?.direction === "OUT_AI" ? lastOut.text : null;
+  // Meta's ad greeting ("浴室是想做淋浴拉門還是整間整修呢?") is not stored,
+  // so "整間" arrives as the first message with nothing before it. Seen
+  // live: the model handed that straight to the owner. Ask the area first.
+  if (!lastOut && fixedAll.get("整修問地區") && fixedAll.get("整修請傳照片") && isBareRenovationAnswer(question)) {
+    return { kind: "result", result: fixedReplyResult("整修問地區", "rule:reno-start") };
+  }
   if (lastAi && !asksSomething(question) && !isMediaPlaceholder(question) && fixedAll.get("整修請傳照片")) {
     const afterArea = askedArea.some((t) => sameWords(lastAi, t));
     const afterItems = askedItems ? sameWords(lastAi, askedItems) : false;
@@ -558,6 +564,9 @@ export function applyReplyRules(
   const fixed = knowledgeBaseFixedReplies(input.settings.knowledgeBase);
   const outbound = input.earlier.filter((m) => m.direction !== "IN");
   const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
+  if (decision.kind === "answered" && decision.text.includes("{地區}")) {
+    decision = { kind: "answered", text: fillPlace(decision.text, [...inbound].reverse(), input.settings.knowledgeBase) };
+  }
   const outOfArea = ["沒服務", "開放"].map((name) => fixed.get(name));
   // The same ad button pressed again (a second ad, or a second tap): the
   // same canned answer is the right answer, not a loop. One person tapped
@@ -696,6 +705,49 @@ export function isRenovationPriceQuestion(text: string, earlierInbound: string[]
   // No work named here: it counts when the thread is about renovation, not a shower door.
   const thread = earlierInbound.join(" ");
   return !shower.test(t) && work.test(thread) && !shower.test(thread);
+}
+
+/** "整間", "整修", "整間翻新": the whole answer is "a full renovation". */
+export function isBareRenovationAnswer(text: string): boolean {
+  const bare = text.replace(/[\s\p{P}\p{S}\p{Emoji_Presentation}\p{Extended_Pictographic}~～]/gu, "");
+  return (
+    /整|翻新|重做|裝修/.test(bare) &&
+    /^(浴室)?(整間|整個|整套|全部)?(浴室)?(整修|翻新|重做|裝修|重新裝修)?(的|喔|唷|啊|呀)?$/.test(bare)
+  );
+}
+
+/**
+ * Where the person said they are, as the owner writes it back: "嘉義市" +
+ * "西區" → "嘉義西區", "台中市北屯區" → "台中北屯區". Only served places
+ * (a reply that starts "X可以～" must not promise an unlisted town); null
+ * when nothing short and clear was named.
+ */
+export function placeLabel(texts: string[], knowledgeBase: string): string | null {
+  const served = placeList(knowledgeBase, "服務地區");
+  for (const text of texts) {
+    const parts = text
+      .replace(/臺/g, "台")
+      .split(/[\s,，、。.!！?？~～]+/)
+      .map((p) => p.replace(/^(我們|我家|我)?(住在|住|在)/, "").replace(/(這邊|那邊|附近|喔|唷|哦|啦|的)+$/, ""))
+      .filter((p) => p && [...p].length <= 8 && (served.some((s) => p.startsWith(s)) || /^[^\d]{1,5}[區鄉鎮市縣]$/.test(p)));
+    let label = parts.join("");
+    if (!label || !served.some((s) => label.startsWith(s))) continue;
+    for (const s of served) label = label.replace(new RegExp(`^${s}[市縣](?=.)`), s);
+    return [...label].length <= 8 ? label : null;
+  }
+  return null;
+}
+
+/**
+ * A fixed reply written with "{地區}" ([固定回覆:整修請傳照片] "{地區}可以～")
+ * gets the place the person named; without one, that line becomes "好的~".
+ */
+function fillPlace(text: string, texts: string[], knowledgeBase: string): string {
+  const label = placeLabel(texts, knowledgeBase);
+  return text
+    .split("\n")
+    .map((line) => (line.includes("{地區}") ? (label ? line.replace(/\{地區\}/g, label) : "好的~") : line))
+    .join("\n");
 }
 
 /** The person has named where they are: a listed place, or a short "台中西屯區". */
