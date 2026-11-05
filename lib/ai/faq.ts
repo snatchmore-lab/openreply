@@ -636,6 +636,34 @@ export function applyReplyRules(
     }
   }
 
+  // A renovation thread (the bot asked which work, where, or explained
+  // pricing) the model would hand off before any photo: the owner wants the
+  // area, then photos, then the thread. Seen live: "如果磁磚看起來沒有問題
+  // 會如何改造呢" right after [固定回覆:整修問項目] went straight to him.
+  // Each ask once; a callback, a remote town or the north flow keep theirs.
+  const kb = input.settings.knowledgeBase;
+  const askArea = fixed.get("整修問地區");
+  const askPhotos = fixed.get("整修請傳照片");
+  const renoAsks = ["整修問項目", "整修問地區", "整修報價", "整修報價-已知地區"]
+    .map((name) => fixed.get(name))
+    .filter((t): t is string => Boolean(t));
+  if (
+    decision.kind === "handoff" &&
+    askArea &&
+    askPhotos &&
+    outbound.some((m) => m.direction === "OUT_AI" && renoAsks.some((t) => sameWords(m.text, t))) &&
+    !inbound.some((t) => isMediaPlaceholder(t)) &&
+    !wantsCallback(input.question, kb) &&
+    !isRemoteTownRequest(inbound.join(" "), kb) &&
+    !isNorthThread(inbound, kb)
+  ) {
+    const areaKnown = inbound.some((t) => mentionsPlace(t, kb));
+    if (!areaKnown && !outbound.some((m) => sameWords(m.text, askArea))) return { kind: "answered", text: askArea };
+    if (areaKnown && !outbound.some((m) => sameTemplate(m.text, askPhotos))) {
+      return { kind: "answered", text: fillPlace(askPhotos, [...inbound].reverse(), kb) };
+    }
+  }
+
   const askFixtures = fixed.get("先問配件");
   if (
     askFixtures &&
@@ -748,6 +776,13 @@ function fillPlace(text: string, texts: string[], knowledgeBase: string): string
     .split("\n")
     .map((line) => (line.includes("{地區}") ? (label ? line.replace(/\{地區\}/g, label) : "好的~") : line))
     .join("\n");
+}
+
+/** The text is this fixed reply, whatever place was filled into its "{地區}" line. */
+function sameTemplate(text: string, template: string): boolean {
+  const strip = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
+  const fixedPart = strip(template.split("\n").filter((line) => !line.includes("{地區}")).join(""));
+  return fixedPart.length > 0 && strip(text).includes(fixedPart);
 }
 
 /** The person has named where they are: a listed place, or a short "台中西屯區". */

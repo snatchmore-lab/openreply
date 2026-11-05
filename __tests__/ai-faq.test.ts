@@ -628,3 +628,50 @@ describe("photo request names the place; a bare 整間 asks the area", () => {
     expect(preReplyRule("整間", kb, [{ direction: "OUT_AI", text: "好的~" }], false)).toBeNull();
   });
 });
+
+describe("renovation thread: area, then photos, before the owner", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修問項目] 好的~",
+    "[固定回覆:整修問項目] 請問想做哪些項目呢?",
+    "[固定回覆:整修問地區] 好的~",
+    "[固定回覆:整修問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修請傳照片] {地區}可以～",
+    "[固定回覆:整修請傳照片] 可以先傳幾張現場照片",
+    "[服務地區] 台中 彰化 台北",
+    "[北部地區] 台北",
+    "[偏遠鄉鎮] 和平",
+  ].join(nl);
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+  const handoff = { kind: "handoff" as const, text: "轉給本人" };
+  const askItems = "好的~" + nl + "請問想做哪些項目呢?";
+  const askArea = "好的~" + nl + "請問是住在哪個縣市/哪一區呢😊";
+  const start = [{ direction: "IN", text: "我有浴室整修需求" }, { direction: "OUT_AI", text: askItems }];
+  const q = "如果磁磚看起來沒有問題 會如何改造呢";
+
+  it("asks the area instead of handing off", () => {
+    expect(applyReplyRules(handoff, { question: q, earlier: start, settings })).toEqual({ kind: "answered", text: askArea });
+  });
+
+  it("asks for photos once the area is known", () => {
+    const earlier = [...start, { direction: "IN", text: q }, { direction: "OUT_AI", text: askArea }];
+    expect(applyReplyRules(handoff, { question: "台中大里 那浴櫃可以換嗎", earlier, settings })).toEqual({
+      kind: "answered",
+      text: "台中大里可以～" + nl + "可以先傳幾張現場照片",
+    });
+  });
+
+  it("hands off once the photo request was sent, or a photo came", () => {
+    const asked = [...start, { direction: "IN", text: "台中大里" }, { direction: "OUT_AI", text: "台中大里可以～" + nl + "可以先傳幾張現場照片" }];
+    expect(applyReplyRules(handoff, { question: "直接請師傅來", earlier: asked, settings })).toEqual(handoff);
+    const photo = [...start, { direction: "IN", text: "(客人傳了照片)" }];
+    expect(applyReplyRules(handoff, { question: q, earlier: photo, settings })).toEqual(handoff);
+  });
+
+  it("leaves callbacks, remote towns, the north and other threads alone", () => {
+    expect(applyReplyRules(handoff, { question: "請師傅打給我 0912345678", earlier: start, settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: "台中和平", earlier: start, settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: "台北 磁磚沒問題怎麼改", earlier: start, settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: q, earlier: [{ direction: "IN", text: "拉門" }], settings })).toEqual(handoff);
+  });
+});
