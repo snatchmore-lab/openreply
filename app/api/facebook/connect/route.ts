@@ -11,7 +11,7 @@ export async function GET() {
   if (!canManageWorkspace(context.role)) {
     return NextResponse.redirect(`${getBaseUrl()}/settings?facebook=forbidden`);
   }
-  if (!process.env.FACEBOOK_APP_SECRET) {
+  if (!process.env.FACEBOOK_APP_SECRET && !process.env.FACEBOOK_PAGE_APP_SECRET) {
     return NextResponse.redirect(
       `${getBaseUrl()}/settings?facebook=misconfigured&missing=FACEBOOK_APP_SECRET`
     );

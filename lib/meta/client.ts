@@ -878,6 +878,15 @@ export function getFacebookAppId(): string {
   return process.env.FACEBOOK_APP_ID || "1440737331340309";
 }
 
+/**
+ * The Facebook app secret for Page login: FACEBOOK_PAGE_APP_SECRET when the
+ * Pages run on their own app (set with FACEBOOK_APP_ID and
+ * FACEBOOK_LOGIN_CONFIG_ID), else the original FACEBOOK_APP_SECRET.
+ */
+export function getFacebookAppSecret(): string {
+  return process.env.FACEBOOK_PAGE_APP_SECRET || requireEnv("FACEBOOK_APP_SECRET");
+}
+
 /** Facebook Login for Business configuration (Pages + Messenger permissions). */
 export function getFacebookLoginConfigId(): string {
   return process.env.FACEBOOK_LOGIN_CONFIG_ID || "1086499857525329";
@@ -900,7 +909,7 @@ export function getFacebookAuthorizationUrl(redirectUri: string, state: string):
 export async function exchangeFacebookCode(code: string, redirectUri: string): Promise<string> {
   const short = new URL(`${facebookGraphBase()}/oauth/access_token`);
   short.searchParams.set("client_id", getFacebookAppId());
-  short.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  short.searchParams.set("client_secret", getFacebookAppSecret());
   short.searchParams.set("redirect_uri", redirectUri);
   short.searchParams.set("code", code);
   const { access_token: shortToken } = await handleResponse<{ access_token: string }>(
@@ -910,7 +919,7 @@ export async function exchangeFacebookCode(code: string, redirectUri: string): P
   const long = new URL(`${facebookGraphBase()}/oauth/access_token`);
   long.searchParams.set("grant_type", "fb_exchange_token");
   long.searchParams.set("client_id", getFacebookAppId());
-  long.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  long.searchParams.set("client_secret", getFacebookAppSecret());
   long.searchParams.set("fb_exchange_token", shortToken);
   const { access_token } = await handleResponse<{ access_token: string }>(
     await fetch(long.toString())

@@ -53,6 +53,13 @@ describe("verifyWebhookSignature", () => {
     expect(verifyWebhookSignature(tamperedPayload, signature)).toBe(false);
   });
 
+  it("accepts a separate Page app's secret alongside the original", () => {
+    vi.stubEnv("FACEBOOK_PAGE_APP_SECRET", "page_app_secret_678");
+    const payload = '{"object": "page"}';
+    expect(verifyWebhookSignature(payload, createSignature(payload, "page_app_secret_678"))).toBe(true);
+    expect(verifyWebhookSignature(payload, createSignature(payload, "test_app_secret_12345"))).toBe(true);
+  });
+
   it("should return false when signed with wrong secret", () => {
     const payload = '{"test": "data"}';
     const signature = createSignature(payload, "wrong_secret");
