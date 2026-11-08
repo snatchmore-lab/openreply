@@ -481,6 +481,13 @@ export function preReplyRule(
     const afterArea = askedArea.some((t) => sameWords(lastAi, t));
     const afterItems = askedItems ? sameWords(lastAi, askedItems) : false;
     if ((afterArea || afterItems) && mentionsPlace(question, knowledgeBase)) {
+      // A price question about a style ("這種的大概多少錢"), not renovation
+      // work: once the area is known the answer is [固定回覆:線上報價], not a
+      // photo request (owner's call for Irina Cai, 11/08).
+      const inboundBefore = earlier.filter((m) => m.direction === "IN").map((m) => m.text);
+      if (afterArea && fixedAll.get("線上報價") && isStylePriceThread(inboundBefore)) {
+        return { kind: "result", result: fixedReplyResult("線上報價", "rule:style-quote") };
+      }
       return { kind: "result", result: fixedReplyResult("整修請傳照片", "rule:reno-photos") };
     }
     if (afterItems && fixedAll.get("整修問地區")) {
@@ -783,6 +790,16 @@ function sameTemplate(text: string, template: string): boolean {
   const strip = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
   const fixedPart = strip(template.split("\n").filter((line) => !line.includes("{地區}")).join(""));
   return fixedPart.length > 0 && strip(text).includes(fixedPart);
+}
+
+/**
+ * The customer asked a price ("此款大概多少錢") and never named renovation
+ * work: a shower door or style question, priced only on site.
+ */
+export function isStylePriceThread(inbound: string[]): boolean {
+  const price = /多少|價|預算|費用|報價|錢|行情/;
+  const work = /整修|翻新|乾濕分離|浴缸|防水|馬桶|臉盆|浴櫃|鏡櫃|設備|磁磚|地磚|整間|管線|漏水/;
+  return inbound.some((t) => price.test(t)) && !inbound.some((t) => work.test(t));
 }
 
 /** The person has named where they are: a listed place, or a short "台中西屯區". */

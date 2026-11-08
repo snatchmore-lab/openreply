@@ -13,7 +13,7 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendDirectMessage: vi.fn(),
 }));
 
-import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isNorthThread, isRenovationPriceQuestion, leftPhoneNumber, placeLabel, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
+import { applyReplyRules, decideFaqReply, isAcknowledgement, isAskingForReply, isNorthThread, isRenovationPriceQuestion, isStylePriceThread, leftPhoneNumber, placeLabel, preReplyRule, sanitizeAnswer, wantsCallback, DEFAULT_HANDOFF_MESSAGE, CRISIS_MESSAGE } from "@/lib/ai/faq";
 import { buildFaqUserPrompt, buildFaqContextBlock, FAQ_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const settings = { handoffMessage: "我幫你轉給本人，稍等 🙏", maxReplyChars: 300 };
@@ -673,5 +673,30 @@ describe("renovation thread: area, then photos, before the owner", () => {
     expect(applyReplyRules(handoff, { question: "台中和平", earlier: start, settings })).toEqual(handoff);
     expect(applyReplyRules(handoff, { question: "台北 磁磚沒問題怎麼改", earlier: start, settings })).toEqual(handoff);
     expect(applyReplyRules(handoff, { question: q, earlier: [{ direction: "IN", text: "拉門" }], settings })).toEqual(handoff);
+  });
+});
+
+describe("style price: area asked, then 線上報價 instead of photos", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修問地區] 好的~",
+    "[固定回覆:整修問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修請傳照片] {地區}可以～",
+    "[固定回覆:線上報價] 目前沒有提供線上報價唷",
+    "[固定回覆:線上報價] 都是請師傅免費到府丈量後",
+    "[服務地區] 台中 彰化",
+  ].join(nl);
+  const askArea = "好的~" + nl + "請問是住在哪個縣市/哪一區呢😊";
+
+  it("answers the area with the on-site quote line", () => {
+    const earlier = [{ direction: "IN", text: "這種的大概多少錢" }, { direction: "OUT_AI", text: askArea }];
+    expect(preReplyRule("台中西屯", kb, earlier, false)).toMatchObject({ result: { model: "rule:style-quote", result: { fixedReply: "線上報價" } } });
+  });
+
+  it("keeps the photo request for renovation prices", () => {
+    const earlier = [{ direction: "IN", text: "整間翻新大概多少錢" }, { direction: "OUT_AI", text: askArea }];
+    expect(preReplyRule("台中西屯", kb, earlier, false)).toMatchObject({ result: { model: "rule:reno-photos" } });
+    expect(isStylePriceThread(["拆浴缸多少"])).toBe(false);
+    expect(isStylePriceThread(["請問此款大概多少錢", "這種的大概多少錢"])).toBe(true);
   });
 });
