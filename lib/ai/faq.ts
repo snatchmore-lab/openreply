@@ -468,7 +468,7 @@ export function preReplyRule(
   // The renovation button flow: [固定回覆:整修問項目] → whatever the reply
   // ("對" included, seen live) → [固定回覆:整修問地區] → photos. A reply
   // that already names the place skips straight to photos.
-  const askedArea = ["整修報價", "整修問地區"].map((name) => fixedAll.get(name)).filter((t): t is string => Boolean(t));
+  const askedArea = ["整修報價", "整修問地區", "現場評估問地區"].map((name) => fixedAll.get(name)).filter((t): t is string => Boolean(t));
   const askedItems = fixedAll.get("整修問項目");
   const lastAi = lastOut?.direction === "OUT_AI" ? lastOut.text : null;
   // Meta's ad greeting ("浴室是想做淋浴拉門還是整間整修呢?") is not stored,
@@ -648,24 +648,36 @@ export function applyReplyRules(
   // area, then photos, then the thread. Seen live: "如果磁磚看起來沒有問題
   // 會如何改造呢" right after [固定回覆:整修問項目] went straight to him.
   // Each ask once; a callback, a remote town or the north flow keep theirs.
+  // The same for a shower-door thread: a wall type or dimensions only the
+  // owner can judge ("推門 寬160 深90 牆是組合屋鋼塑板") got a bare handoff.
+  // [固定回覆:現場評估問地區] says why the area is asked. Bookings and
+  // builders (several bathrooms) still go straight to the owner.
   const kb = input.settings.knowledgeBase;
   const askArea = fixed.get("整修問地區");
   const askPhotos = fixed.get("整修請傳照片");
-  const renoAsks = ["整修問項目", "整修問地區", "整修報價", "整修報價-已知地區"]
+  const siteAskArea = fixed.get("現場評估問地區");
+  const renoAsks = ["整修問項目", "整修問地區", "整修報價", "整修報價-已知地區", "現場評估問地區"]
     .map((name) => fixed.get(name))
     .filter((t): t is string => Boolean(t));
+  const askedBefore = outbound.some((m) => m.direction === "OUT_AI" && renoAsks.some((t) => sameWords(m.text, t)));
+  const showerDoorThread = isShowerDoorThread(inbound);
   if (
     decision.kind === "handoff" &&
     askArea &&
     askPhotos &&
-    outbound.some((m) => m.direction === "OUT_AI" && renoAsks.some((t) => sameWords(m.text, t))) &&
+    (askedBefore || showerDoorThread) &&
     !inbound.some((t) => isMediaPlaceholder(t)) &&
     !wantsCallback(input.question, kb) &&
     !isRemoteTownRequest(inbound.join(" "), kb) &&
-    !isNorthThread(inbound, kb)
+    !isNorthThread(inbound, kb) &&
+    !isBookingThread([...input.earlier, { direction: "IN", text: input.question }], kb) &&
+    !isBuilderRequest(inbound)
   ) {
     const areaKnown = inbound.some((t) => mentionsPlace(t, kb));
-    if (!areaKnown && !outbound.some((m) => sameWords(m.text, askArea))) return { kind: "answered", text: askArea };
+    const areaAsks = [askArea, siteAskArea].filter((t): t is string => Boolean(t));
+    if (!areaKnown && !outbound.some((m) => areaAsks.some((t) => sameWords(m.text, t)))) {
+      return { kind: "answered", text: showerDoorThread && siteAskArea && !askedBefore ? siteAskArea : askArea };
+    }
     if (areaKnown && !outbound.some((m) => sameTemplate(m.text, askPhotos))) {
       return { kind: "answered", text: fillPlace(askPhotos, [...inbound].reverse(), kb) };
     }
@@ -745,10 +757,23 @@ export function isRenovationPriceQuestion(text: string, earlierInbound: string[]
 /** "整間", "整修", "整間翻新": the whole answer is "a full renovation". */
 export function isBareRenovationAnswer(text: string): boolean {
   const bare = text.replace(/[\s\p{P}\p{S}\p{Emoji_Presentation}\p{Extended_Pictographic}~～]/gu, "");
+  // "淋浴門", "想做拉門" count too (seen live: the model asked "想了解哪方面"
+  // and the customer answered with a wall type, which went to the owner).
   return (
-    /整|翻新|重做|裝修/.test(bare) &&
-    /^(浴室)?(整間|整個|整套|全部)?(浴室)?(整修|翻新|重做|裝修|重新裝修)?(的|喔|唷|啊|呀)?$/.test(bare)
+    /整|翻新|重做|裝修|拉門|淋浴門|玻璃門|隔屏|乾濕分離/.test(bare) &&
+    [...bare].length <= 12 &&
+    /^(浴室)?(想|要)?(做|裝|換)?(淋浴拉門|淋浴門|拉門|玻璃門|隔屏|乾濕分離|整間|整個|整套|全部)?(浴室)?(整修|翻新|重做|裝修|重新裝修)?(的|喔|唷|啊|呀)?$/.test(bare)
   );
+}
+
+/** The thread is about a shower door (not a renovation). */
+function isShowerDoorThread(inbound: string[]): boolean {
+  return inbound.some((t) => /拉門|淋浴門|玻璃門|隔屏|推門|橫拉|折疊門/.test(t));
+}
+
+/** A builder, a site, several bathrooms: the owner books these himself, no photos first. */
+function isBuilderRequest(inbound: string[]): boolean {
+  return inbound.some((t) => /建商|工地|建案|[二兩三四五六七八九十\d]+\s*間/.test(t.replace(/\s/g, "")));
 }
 
 /**

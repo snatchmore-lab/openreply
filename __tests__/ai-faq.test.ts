@@ -624,7 +624,9 @@ describe("photo request names the place; a bare 整間 asks the area", () => {
       expect(preReplyRule(t, kb, [], false), t).toMatchObject({ kind: "result", result: { model: "rule:reno-start", result: { fixedReply: "整修問地區" } } });
     }
     expect(preReplyRule("整間大概多少", kb, [], false)).toBeNull();
-    expect(preReplyRule("淋浴拉門", kb, [], false)).toBeNull();
+    expect(preReplyRule("淋浴拉門", kb, [], false)).toMatchObject({ result: { model: "rule:reno-start" } });
+    expect(preReplyRule("想做拉門", kb, [], false)).toMatchObject({ result: { model: "rule:reno-start" } });
+    expect(preReplyRule("拉門大概多少", kb, [], false)).toBeNull();
     expect(preReplyRule("整間", kb, [{ direction: "OUT_AI", text: "好的~" }], false)).toBeNull();
   });
 });
@@ -672,7 +674,7 @@ describe("renovation thread: area, then photos, before the owner", () => {
     expect(applyReplyRules(handoff, { question: "請師傅打給我 0912345678", earlier: start, settings })).toEqual(handoff);
     expect(applyReplyRules(handoff, { question: "台中和平", earlier: start, settings })).toEqual(handoff);
     expect(applyReplyRules(handoff, { question: "台北 磁磚沒問題怎麼改", earlier: start, settings })).toEqual(handoff);
-    expect(applyReplyRules(handoff, { question: q, earlier: [{ direction: "IN", text: "拉門" }], settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: q, earlier: [{ direction: "IN", text: "你們門市在哪" }], settings })).toEqual(handoff);
   });
 });
 
@@ -698,5 +700,40 @@ describe("style price: area asked, then 線上報價 instead of photos", () => {
     expect(preReplyRule("台中西屯", kb, earlier, false)).toMatchObject({ result: { model: "rule:reno-photos" } });
     expect(isStylePriceThread(["拆浴缸多少"])).toBe(false);
     expect(isStylePriceThread(["請問此款大概多少錢", "這種的大概多少錢"])).toBe(true);
+  });
+});
+
+describe("shower door: a site question asks the area, then photos, before the owner", () => {
+  const nl = String.fromCharCode(10);
+  const kb = [
+    "[固定回覆:整修問地區] 好的~",
+    "[固定回覆:整修問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:現場評估問地區] 好的~",
+    "[固定回覆:現場評估問地區] 這部分要請師傅看現場評估",
+    "[固定回覆:現場評估問地區] 請問是住在哪個縣市/哪一區呢😊",
+    "[固定回覆:整修請傳照片] {地區}可以～",
+    "[固定回覆:整修請傳照片] 可以先傳幾張現場照片",
+    "[服務地區] 台中 彰化",
+  ].join(nl);
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: kb };
+  const handoff = { kind: "handoff" as const, text: "轉給本人" };
+  const siteAsk = "好的~" + nl + "這部分要請師傅看現場評估" + nl + "請問是住在哪個縣市/哪一區呢😊";
+  const wall = "推門" + nl + "寬160公分" + nl + "深90公分" + nl + nl + "我的牆是組合屋鋼朔板";
+  const start = [{ direction: "IN", text: "淋浴門" }, { direction: "OUT_AI", text: "好的~想了解淋浴門的哪方面呢" }];
+
+  it("explains and asks the area instead of handing off", () => {
+    expect(applyReplyRules(handoff, { question: wall, earlier: start, settings })).toEqual({ kind: "answered", text: siteAsk });
+  });
+
+  it("asks for photos when the area comes back", () => {
+    const earlier = [...start, { direction: "IN", text: wall }, { direction: "OUT_AI", text: siteAsk }];
+    expect(preReplyRule("台中北屯", kb, earlier, false)).toMatchObject({ result: { model: "rule:reno-photos" } });
+  });
+
+  it("still hands builders, bookings and photos straight to the owner", () => {
+    const builder = "現在建造下來，預計開工中，想了解150 cm強化安全玻璃淋浴拉門費用預計會有四間";
+    expect(applyReplyRules(handoff, { question: builder, earlier: [], settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: "拉門 想約師傅來量", earlier: [], settings })).toEqual(handoff);
+    expect(applyReplyRules(handoff, { question: "(客人傳了照片)", earlier: [{ direction: "IN", text: "淋浴門 牆是鋼板" }], settings })).toEqual(handoff);
   });
 });
