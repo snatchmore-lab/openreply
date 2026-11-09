@@ -737,3 +737,20 @@ describe("shower door: a site question asks the area, then photos, before the ow
     expect(applyReplyRules(handoff, { question: "(客人傳了照片)", earlier: [{ direction: "IN", text: "淋浴門 牆是鋼板" }], settings })).toEqual(handoff);
   });
 });
+
+describe("builders and several bathrooms go to the owner", () => {
+  const settings = { handoffMessage: "轉給本人", knowledgeBase: ["[固定回覆:線上報價] 目前沒有提供線上報價唷", "[固定回覆:沒服務] 哇…目前還沒有服務到那邊🥹"].join(String.fromCharCode(10)) };
+  const quote = { kind: "answered" as const, text: "目前沒有提供線上報價唷" };
+
+  it("hands off a four-bathroom build even when the model answered", () => {
+    const q = "現在建造下來，預計開工中，想了解150 cm強化安全玻璃淋浴拉門費用預計會有四間";
+    expect(applyReplyRules(quote, { question: q, earlier: [], settings })).toEqual({ kind: "handoff", text: "轉給本人" });
+    expect(applyReplyRules(quote, { question: "我是建商 想問拉門", earlier: [], settings })).toEqual({ kind: "handoff", text: "轉給本人" });
+  });
+
+  it("leaves one bathroom and out-of-area answers alone", () => {
+    expect(applyReplyRules(quote, { question: "一間浴室 無框多少", earlier: [], settings })).toEqual(quote);
+    const noService = { kind: "answered" as const, text: "哇…目前還沒有服務到那邊🥹" };
+    expect(applyReplyRules(noService, { question: "台南建案四間", earlier: [], settings })).toEqual(noService);
+  });
+});

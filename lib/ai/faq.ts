@@ -618,6 +618,12 @@ export function applyReplyRules(
   if (decision.kind === "answered" && wantsCallback(input.question, input.settings.knowledgeBase) && !outOfArea.includes(decision.text)) {
     return { kind: "handoff", text: handoffText };
   }
+  // A builder, a site, several bathrooms ("預計會有四間"): the knowledge base
+  // sends these to the owner to book directly; the model sometimes answered
+  // with the no-online-quote line instead (replay, 11/09).
+  if (decision.kind === "answered" && isBuilderRequest([input.question]) && !outOfArea.includes(decision.text)) {
+    return { kind: "handoff", text: handoffText };
+  }
 
   // A price question about renovation work (not a shower door) that the
   // model would hand off: the knowledge base says to explain that only a
@@ -773,7 +779,7 @@ function isShowerDoorThread(inbound: string[]): boolean {
 
 /** A builder, a site, several bathrooms: the owner books these himself, no photos first. */
 function isBuilderRequest(inbound: string[]): boolean {
-  return inbound.some((t) => /建商|工地|建案|[二兩三四五六七八九十\d]+\s*間/.test(t.replace(/\s/g, "")));
+  return inbound.some((t) => /建商|工地|建案|[二兩三四五六七八九十\d]+間|幾間|多間/.test(t.replace(/\s/g, "")));
 }
 
 /**
