@@ -47,6 +47,7 @@ async function ask(q: string): Promise<string> {
     else out = parseJson(await ask(q));
     const decision = applyReplyRules(decideFaqReply(out, SETTINGS), { question: q, earlier, settings: SETTINGS } as any);
     console.log(`機器人(${decision.kind}${out?.fixedReply ? ", 固定:" + out.fixedReply : ""})：` + decision.text.replace(/\n/g, " / "));
+    if (out?.images?.length) console.log("  照片：" + out.images.map((u: string) => u.split("/").pop()).join(", "));
     turns.push({ role: "bot", text: decision.text, kind: decision.kind });
   }
 })().catch((e) => { console.error(e); process.exit(1); });
