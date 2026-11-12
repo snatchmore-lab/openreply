@@ -998,12 +998,17 @@ export async function sendPageImage(
   return handleResponse(response);
 }
 
-/** Messenger Send API: a plain text reply inside the 24-hour window. */
+/**
+ * Messenger Send API: a plain text message inside the 24-hour window.
+ * `proactive` marks a message the person did not just ask for (a follow-up):
+ * Meta's messaging_type for those is UPDATE; a reply is RESPONSE.
+ */
 export async function sendPageMessage(
   pageToken: string,
   pageId: string,
   userId: string,
-  message: string
+  message: string,
+  proactive = false
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(`${facebookGraphBase()}/${pageId}/messages`, {
     method: "POST",
@@ -1013,7 +1018,7 @@ export async function sendPageMessage(
     },
     body: JSON.stringify({
       recipient: { id: userId },
-      messaging_type: "RESPONSE",
+      messaging_type: proactive ? "UPDATE" : "RESPONSE",
       message: { text: message },
     }),
   });

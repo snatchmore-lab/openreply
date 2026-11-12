@@ -168,6 +168,7 @@ export async function handleNudge(job: FaqNudgeJob, now = new Date()): Promise<N
       instagramAccountId: account.instagramId,
       userId: conversation.senderId,
       message: text,
+      proactive: true,
     });
   } catch (error) {
     if (slot.reserved) await releaseDMSlot(account.instagramId).catch(() => {});

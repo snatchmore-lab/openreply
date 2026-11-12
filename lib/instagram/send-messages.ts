@@ -221,15 +221,18 @@ export async function sendDirectMessage({
   instagramAccountId,
   userId,
   message,
+  proactive = false,
 }: {
   context: InstagramContext;
   instagramAccountId: string;
   userId: string;
   message: string;
+  /** A follow-up the person did not just ask for (Messenger: messaging_type UPDATE). */
+  proactive?: boolean;
 }) {
   if (context.provider === "FACEBOOK_PAGE")
     return trackSent(
-      meta.sendPageMessage(context.accessToken, context.pageId, userId, message)
+      meta.sendPageMessage(context.accessToken, context.pageId, userId, message, proactive)
     );
   if (context.provider === "META")
     return trackSent(
