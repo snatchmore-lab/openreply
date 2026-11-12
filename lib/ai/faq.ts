@@ -560,14 +560,69 @@ type Decision = ReturnType<typeof decideFaqReply>;
  *   before it is asked for photos. The knowledge base says so and the model
  *   skipped it often; the photo request lines are swapped for the question.
  */
-export function applyReplyRules(
-  decision: Decision,
-  input: {
-    question: string;
-    earlier: { direction: string; text: string }[];
-    settings: { handoffMessage: string; knowledgeBase: string };
+export function applyReplyRules(decision: Decision, input: ReplyRulesInput): Decision {
+  return dropKnownAreaQuestion(applyReplyRulesCore(decision, input), input);
+}
+
+type ReplyRulesInput = {
+  question: string;
+  earlier: { direction: string; text: string }[];
+  settings: { handoffMessage: string; knowledgeBase: string };
+};
+
+/** A served place or a town the owner confirms himself: worth remembering. */
+export function remembersPlace(text: string, knowledgeBase: string): boolean {
+  return mentionsServedPlace(text, knowledgeBase) || isRemoteTownRequest(text, knowledgeBase);
+}
+
+const ASKS_COUNTY = /哪個縣市|哪一個縣市|哪個地區|住在哪裡/;
+
+/**
+ * The person already said where they are, and the reply asks "哪個縣市"
+ * again: fixed replies carry that question whatever was said before
+ * ([固定回覆:線上評估], [固定回覆:預約]), and the model repeats it too.
+ * The question is dropped. A reply that asked nothing else moves to the
+ * next step instead: photos, or the owner once photos are in.
+ * "請問是苗栗哪一區呢" (district only) is a real follow-up and stays.
+ */
+function dropKnownAreaQuestion(decision: Decision, input: ReplyRulesInput): Decision {
+  if (decision.kind !== "answered") return decision;
+  const lines = decision.text.split("\n");
+  if (!lines.some((line) => ASKS_COUNTY.test(line))) return decision;
+  const kb = input.settings.knowledgeBase;
+  const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
+  if (!inbound.some((t) => mentionsServedPlace(t, kb))) return decision;
+
+  const fixed = knowledgeBaseFixedReplies(kb);
+  const outbound = input.earlier.filter((m) => m.direction !== "IN");
+  const handoff: Decision = { kind: "handoff", text: input.settings.handoffMessage.trim() || DEFAULT_HANDOFF_MESSAGE };
+
+  // Booking: area known, so the next question is which work.
+  const booking = fixed.get("預約");
+  const bookingItems = fixed.get("預約問項目");
+  if (booking && bookingItems && decision.text === booking) {
+    return outbound.some((m) => sameWords(m.text, bookingItems)) ? handoff : { kind: "answered", text: bookingItems };
   }
-): Decision {
+
+  const kept = lines.filter((line) => !ASKS_COUNTY.test(line));
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+  if (kept.some((line) => line.trim() && !isAcknowledgement(line))) {
+    return { kind: "answered", text: kept.join("\n") };
+  }
+
+  // Nothing but the area was asked. Towns the owner confirms himself go to him.
+  if (isRemoteTownRequest(inbound.join(" "), kb)) return handoff;
+  if (inbound.some((t) => isMediaPlaceholder(t))) return handoff;
+  const northPhotos = fixed.get("北部先傳照片");
+  if (northPhotos && isNorthThread(inbound, kb)) return { kind: "answered", text: northPhotos };
+  const askPhotos = fixed.get("整修請傳照片");
+  if (askPhotos && !outbound.some((m) => sameTemplate(m.text, askPhotos))) {
+    return { kind: "answered", text: fillPlace(askPhotos, [...inbound].reverse(), kb) };
+  }
+  return handoff;
+}
+
+function applyReplyRulesCore(decision: Decision, input: ReplyRulesInput): Decision {
   const fixed = knowledgeBaseFixedReplies(input.settings.knowledgeBase);
   const outbound = input.earlier.filter((m) => m.direction !== "IN");
   const inbound = [...input.earlier.filter((m) => m.direction === "IN").map((m) => m.text), input.question];
@@ -1218,12 +1273,37 @@ export async function handleFaqMessage(input: {
   const { pending, history } = splitPendingMessages(earlier, now);
   const question = [...pending, input.messageText].join("\n");
 
+  // Where the person said they are, from messages older than the window
+  // above. Without it a return visit days later was asked "哪個縣市" again
+  // (seen live: 新北新店 on 11/06, asked again on 11/11). Places we do not
+  // serve are left out: those people are asked again and told so.
+  const oldestKept = earlier[0]?.createdAt;
+  const remembered = oldestKept
+    ? (
+        await prisma.conversationMessage.findMany({
+          where: { conversationId: conversation.id, direction: "IN", createdAt: { lt: oldestKept } },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          select: { direction: true, text: true, messageId: true, createdAt: true },
+        })
+      )
+        .filter((m) => remembersPlace(m.text, settings.knowledgeBase))
+        .slice(0, 3)
+        .reverse()
+    : [];
+  const thread = [...remembered, ...earlier];
+  const knownPlace = [...thread]
+    .reverse()
+    .find((m) => m.direction === "IN" && remembersPlace(m.text, settings.knowledgeBase))
+    ?.text.replace(/\s+/g, " ")
+    .slice(0, 40);
+
   if (await answeredByAutomation(conversation.id, input)) return { kind: "silent", reason: "auto-answered" };
 
   const tone = normalizeTone(settings.tone);
   const maxChars = Math.min(1000, Math.max(50, settings.maxReplyChars));
 
-  const pre = limitReached ? null : preReplyRule(question, settings.knowledgeBase, earlier, afterHandoff);
+  const pre = limitReached ? null : preReplyRule(question, settings.knowledgeBase, thread, afterHandoff);
   if (pre?.kind === "silent") return { kind: "silent", reason: "not-ai-state" };
   const result = limitReached
     ? HOURLY_LIMIT_RESULT
@@ -1240,6 +1320,7 @@ export async function handleFaqMessage(input: {
         tone,
         maxChars,
         lineWidth: clampLineWidth(settings.maxLineWidth),
+        knownPlace,
       }),
       schema: FaqOutput,
       cacheScope: [conversation.id],
@@ -1252,7 +1333,7 @@ export async function handleFaqMessage(input: {
     return { kind: "silent", reason: "ai-unavailable" };
   }
 
-  let decision = applyReplyRules(decideFaqReply(result.result, settings), { question, earlier, settings });
+  let decision = applyReplyRules(decideFaqReply(result.result, settings), { question, earlier: thread, settings });
 
   // Already handed off: never send the handoff line twice in a row. If the
   // bot has answered other things since, a new request that needs the owner

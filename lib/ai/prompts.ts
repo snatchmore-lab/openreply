@@ -89,6 +89,8 @@ export interface FaqPromptInput {
   maxChars: number;
   /** Widest line, in Chinese characters. Defaults to 10. */
   lineWidth?: number;
+  /** Where the person said they are, in an older message the history no longer shows. */
+  knownPlace?: string;
 }
 
 export const FAQ_SYSTEM_PROMPT = `You answer Instagram direct messages on behalf of a creator, using ONLY the knowledge base provided in the next system block.
@@ -135,6 +137,12 @@ export function buildFaqUserPrompt(input: FaqPromptInput): string {
     for (const item of input.history) {
       lines.push(`${item.role === "user" ? "User" : "You"}: ${item.text}`);
     }
+  }
+  if (input.knownPlace) {
+    lines.push(
+      "",
+      `Already known: earlier in this conversation the person said where they are: "${input.knownPlace}". Do not ask which county or district again.`
+    );
   }
   lines.push("", "New message from the user:", input.question);
   return lines.join("\n");
