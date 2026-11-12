@@ -142,6 +142,7 @@ export async function handleNudge(job: FaqNudgeJob, now = new Date()): Promise<N
     },
   });
   if (!conversation || conversation.instagramAccountId !== account.id) return "skipped";
+  if (declinedFollowUp(conversation.messages)) return "skipped";
   const ok = adConfig
     ? shouldNudge(conversation, job.messageId, adConfig, now)
     : shouldFollowUpQuiet(conversation, job.messageId, fallback!, now, outOfAreaReplies(settings.knowledgeBase));
@@ -273,6 +274,29 @@ function outOfAreaReplies(knowledgeBase: string): string[] {
   return ["沒服務", "開放"]
     .map((name) => (fixed.get(name) ?? []).join("\n").replace(/^\n+|\n+$/g, ""))
     .filter(Boolean);
+}
+
+const DECLINES_CLEARLY =
+  /不要再|別再|不用再|不要傳|別傳|不要聯絡|別聯絡|不要打擾|別打擾|停止|別吵|很煩|好煩|騷擾|封鎖|檢舉|不需要了|沒興趣|不考慮|找別家|找到了|已經找|做好了|裝好了/;
+const DECLINES_WHEN_ALONE =
+  /^(我|那|好|嗯|喔|哦|先|目前|暫時)*(不用了?|不要了?|不需要|沒有要|先不用|再說|再看看|再想想|再?考慮看看|再?考慮一下|再?考慮)(謝謝|感謝|喔|唷|囉|啦|了)*$/;
+
+/**
+ * The person said they do not want more messages ("不要再傳了"), or closed
+ * the topic ("不用了", "我再考慮看看"). Meta's developer policy says an
+ * opt-out is honoured at once: no follow-up of any kind after that.
+ * A bare "不用" answering the bot's own yes/no question (fixtures to
+ * replace too?) is an answer, not an opt-out.
+ */
+export function declinedFollowUp(messages: Array<{ direction: string; text: string | null }>): boolean {
+  return messages.some((m, i) => {
+    if (m.direction !== "IN" || !m.text) return false;
+    const bare = m.text.replace(/[\s\p{P}\p{S}\p{Emoji_Presentation}\p{Extended_Pictographic}~～]/gu, "");
+    if (DECLINES_CLEARLY.test(bare)) return true;
+    if (!DECLINES_WHEN_ALONE.test(bare)) return false;
+    const before = [...messages.slice(0, i)].reverse().find((x) => x.direction !== "IN");
+    return !(before?.text && /一起換|要不要|需要.*嗎|有沒有/.test(before.text));
+  });
 }
 
 /** The person's newest message, if it is still the one the job was for and recent enough. */
