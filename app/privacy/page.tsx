@@ -84,7 +84,8 @@ export default function PrivacyPage() {
           and observability providers such as Vercel, Railway, PostgreSQL,
           Redis, and Resend; Anthropic for generating automated replies; and
           LINE for notifying the business about conversations that need a
-          human (the notification carries the sender&apos;s display name). These
+          human (the notification carries the sender&apos;s display name and the
+          text of their latest message). These
           providers process data only as needed to run the service and on our
           instructions.
         </p>
